@@ -1,12 +1,27 @@
 const mongoose = require('mongoose');
 
 const itemSchema = new mongoose.Schema({
-  id: { type: String, required: true, unique: true }, // e.g., 'p1', 'p2'
-  name: { type: String, required: true },
-  price: { type: Number, required: true },
-  category: { type: String, required: true }, // 'mains', 'breakfast', 'drinks', 'desserts'
-  img: { type: String, default: '' },
-  isAvailable: { type: Boolean, default: true }
+  name: {
+    type: String,
+    required: true, // e.g., "Cheese Margherita Pizza"
+  },
+  price: {
+    type: Number,
+    required: true,
+  },
+  currentStock: {
+    type: Number,
+    required: true,
+    default: 0, // e.g., 50
+  },
+  lowStockThreshold: {
+    type: Number,
+    default: 5, // Jab stock 5 ya usse kam bacha ho toh warning alert do
+  },
+  isAvailable: {
+    type: Boolean,
+    default: true,
+  }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Item', itemSchema);

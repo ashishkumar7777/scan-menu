@@ -1,38 +1,78 @@
 const mongoose = require('mongoose');
 
-const orderSchema = new mongoose.Schema({
-  orderId: { type: String, required: true },
-  
-  // ⚡ FIX: 'QR_SCAN' ko enum array mein include kar do
-  source: { 
-    type: String, 
-    enum: ['POS_COUNTER', 'QR_SCAN', 'ONLINE'], 
-    default: 'POS_COUNTER' 
+// Schema for items in an order with fallbacks for property keys
+const orderItemSchema = new mongoose.Schema(
+  {
+    name: { type: String, trim: true, default: 'Item' },
+    itemName: { type: String, trim: true },
+    title: { type: String, trim: true },
+    price: { type: Number, default: 0 },
+    quantity: { type: Number, default: 1 }
   },
-  
-  orderType: { 
-    type: String, 
-    enum: ['TAKEAWAY', 'DINE_IN', 'DELIVERY'], 
-    default: 'DINE_IN' 
-  },
-  
-  tableNumber: { type: String, default: '' },
-  
-  items: [
-    {
-      id: { type: String },
-      itemId: { type: String },
-      name: { type: String, required: true },
-      price: { type: Number, required: true },
-      quantity: { type: Number, required: true }
-    }
-  ],
-  
-  subTotal: { type: Number, required: true },
-  grandTotal: { type: Number, required: true },
-  
-  paymentMethod: { type: String, default: 'CASH' },
-  paymentStatus: { type: String, default: 'PENDING' }
-}, { timestamps: true });
+  { 
+    _id: false,
+    strict: false 
+  }
+);
 
-module.exports = mongoose.model('Order', orderSchema);
+const orderSchema = new mongoose.Schema(
+  {
+    orderId: {
+      type: String,
+      required: true,
+      unique: true
+    },
+    source: {
+      type: String,
+      default: 'POS_COUNTER'
+    },
+    orderType: {
+      type: String,
+      default: 'TAKEAWAY'
+    },
+    tableNumber: {
+      type: String,
+      default: ''
+    },
+    customerName: {
+      type: String,
+      default: 'Guest'
+    },
+    customerPhone: {
+      type: String,
+      default: ''
+    },
+    items: [orderItemSchema],
+    subTotal: {
+      type: Number,
+      required: true
+    },
+    discount: {
+      type: Number,
+      default: 0
+    },
+    grandTotal: {
+      type: Number,
+      required: true
+    },
+    paymentStatus: {
+      type: String,
+      default: 'PAID'
+    },
+    paymentMethod: {
+      type: String,
+      default: 'CASH'
+    },
+    orderStatus: {
+      type: String,
+      default: 'NEW'
+    }
+  },
+  {
+    timestamps: true
+  }
+);
+
+const Order = mongoose.model('Order', orderSchema, 'orders');
+
+module.exports = Order;

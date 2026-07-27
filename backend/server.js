@@ -33,6 +33,8 @@ io.on('connection', (socket) => {
 // Register Routes
 app.use('/api/items', require('./routes/itemRoutes'));
 app.use('/api/orders', require('./routes/orderRoutes'));
+// ADDED: Register Reports Route
+app.use('/api/reports', require('./routes/reports'));
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Backend Server running on port ${PORT}`));

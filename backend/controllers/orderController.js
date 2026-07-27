@@ -1,20 +1,8 @@
-const express = require('express');
-const router = express.Router();
 const mongoose = require('mongoose');
 const Order = require('../models/Order');
 
-// 🟢 1. GET all orders
-router.get('/', async (req, res) => {
-  try {
-    const orders = await Order.find().sort({ createdAt: -1 });
-    res.json(orders);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// 🟢 2. POST Create Order
-const createOrderHandler = async (req, res) => {
+// 🟢 1. Create New Order Controller
+const createOrder = async (req, res) => {
   try {
     const {
       orderId,
@@ -31,14 +19,17 @@ const createOrderHandler = async (req, res) => {
       paymentStatus,
     } = req.body;
 
-    // Preserve item names, prices, and quantities properly
+    // Map items explicitly so name, price, and quantity are never lost
     const formattedItems = (items || []).map((item) => {
       const resolvedName = item.name || item.itemName || item.title || item.item_name || 'Item';
+      const resolvedPrice = Number(item.price) || 0;
+      const resolvedQty = Number(item.quantity) || 1;
+
       return {
         name: resolvedName,
         itemName: resolvedName,
-        price: Number(item.price) || 0,
-        quantity: Number(item.quantity) || 1,
+        price: resolvedPrice,
+        quantity: resolvedQty,
       };
     });
 
@@ -61,24 +52,29 @@ const createOrderHandler = async (req, res) => {
 
     const savedOrder = await newOrder.save();
 
-    // Broadcast new order real-time via Socket.io
+    // Broadcast new order via Socket.io
     const io = req.app.get('socketio');
     if (io) {
       io.emit('new_order_received', savedOrder);
     }
 
-    return res.status(201).json({ success: true, data: savedOrder });
+    return res.status(201).json({
+      success: true,
+      message: 'Order created successfully',
+      data: savedOrder,
+    });
   } catch (error) {
     console.error('Error creating order:', error);
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to create order',
+      error: error.message,
+    });
   }
 };
 
-router.post('/create', createOrderHandler);
-router.post('/', createOrderHandler);
-
-// 🟢 3. PATCH / PUT Update Order
-const updateOrderHandler = async (req, res) => {
+// 🟢 2. Update Order Controller
+const updateOrder = async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
@@ -87,6 +83,18 @@ const updateOrderHandler = async (req, res) => {
     const query = isObjectId 
       ? { $or: [{ _id: id }, { orderId: id }] } 
       : { orderId: id };
+
+    if (updateData.subTotal !== undefined || updateData.discount !== undefined) {
+      const existingOrder = await Order.findOne(query);
+
+      if (!existingOrder) {
+        return res.status(404).json({ success: false, message: 'Order not found' });
+      }
+
+      const subTotal = updateData.subTotal ?? existingOrder.subTotal;
+      const discount = updateData.discount ?? existingOrder.discount;
+      updateData.grandTotal = Math.max(0, subTotal - discount);
+    }
 
     const updatedOrder = await Order.findOneAndUpdate(
       query,
@@ -98,15 +106,19 @@ const updateOrderHandler = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
-    return res.status(200).json({ success: true, data: updatedOrder });
+    return res.status(200).json({
+      success: true,
+      message: 'Order updated successfully',
+      data: updatedOrder
+    });
+
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update order',
+      error: error.message
+    });
   }
 };
 
-router.patch('/orders/:id', updateOrderHandler);
-router.put('/orders/:id', updateOrderHandler);
-router.patch('/:id', updateOrderHandler);
-router.put('/:id', updateOrderHandler);
-
-module.exports = router;
+module.exports = { createOrder, updateOrder };

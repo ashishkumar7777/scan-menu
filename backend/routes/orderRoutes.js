@@ -5,10 +5,24 @@ const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const { getRazorpayClient, keyId, keySecret } = require('../config/razorpay');
 
-// 🟢 1. GET all orders
+const formatOrderItems = (items) =>
+  (items || []).map((item) => {
+    const resolvedName = item.name || item.itemName || item.title || item.item_name || 'Item';
+    return {
+      name: resolvedName,
+      itemName: resolvedName,
+      price: Number(item.price) || 0,
+      quantity: Number(item.quantity) || 1,
+    };
+  });
+
+// 🟢 1. GET all orders (Live dashboard: paid & not completed)
 router.get('/', async (req, res) => {
   try {
-    const orders = await Order.find().sort({ createdAt: -1 });
+    const orders = await Order.find({
+      paymentStatus: 'PAID',
+      orderStatus: { $ne: 'Completed' },
+    }).sort({ createdAt: -1 });
     res.json(orders);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -34,15 +48,7 @@ const createOrderHandler = async (req, res) => {
     } = req.body;
 
     // Preserve item names, prices, and quantities properly
-    const formattedItems = (items || []).map((item) => {
-      const resolvedName = item.name || item.itemName || item.title || item.item_name || 'Item';
-      return {
-        name: resolvedName,
-        itemName: resolvedName,
-        price: Number(item.price) || 0,
-        quantity: Number(item.quantity) || 1,
-      };
-    });
+    const formattedItems = formatOrderItems(items);
 
     const generatedId = orderId || `POS-${Math.floor(100000 + Math.random() * 900000)}`;
 
@@ -138,21 +144,6 @@ router.post('/create-razorpay-order', async (req, res) => {
       receipt: orderId || `rcpt_${Date.now()}`,
     });
 
-    if (orderId) {
-      const isObjectId = mongoose.Types.ObjectId.isValid(orderId);
-      const query = isObjectId
-        ? { $or: [{ _id: orderId }, { orderId }] }
-        : { orderId };
-
-      await Order.findOneAndUpdate(query, {
-        $set: {
-          razorpayOrderId: razorpayOrder.id,
-          paymentStatus: 'PENDING',
-          paymentMethod: 'RAZORPAY',
-        },
-      });
-    }
-
     return res.status(201).json({
       success: true,
       data: {
@@ -166,7 +157,7 @@ router.post('/create-razorpay-order', async (req, res) => {
   }
 });
 
-// Verify Razorpay payment signature and mark order as paid
+// Verify Razorpay payment signature and persist order only after success
 router.post('/verify-payment', async (req, res) => {
   try {
     if (!keySecret) {
@@ -180,6 +171,16 @@ router.post('/verify-payment', async (req, res) => {
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature,
+      items,
+      customerName,
+      customerPhone,
+      whatsapp,
+      tableNumber,
+      tableNo,
+      subTotal,
+      grandTotal,
+      totalAmount,
+      orderId,
     } = req.body;
 
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
@@ -207,35 +208,55 @@ router.post('/verify-payment', async (req, res) => {
       });
     }
 
-    const updatedOrder = await Order.findOneAndUpdate(
-      { razorpayOrderId: razorpay_order_id },
-      {
-        $set: {
-          paymentStatus: 'PAID',
-          razorpayPaymentId: razorpay_payment_id,
-          paymentMethod: 'RAZORPAY',
-        },
-      },
-      { new: true, runValidators: true }
-    );
+    const existingOrder = await Order.findOne({ razorpayOrderId: razorpay_order_id });
+    if (existingOrder) {
+      return res.status(200).json({
+        success: true,
+        verified: true,
+        data: existingOrder,
+      });
+    }
 
-    if (!updatedOrder) {
-      return res.status(404).json({
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
         success: false,
-        message: 'Order not found for the given Razorpay order ID.',
+        message: 'Cart items are required to save the order after payment.',
         verified: true,
       });
     }
 
+    const formattedItems = formatOrderItems(items);
+    const generatedId = orderId || `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
+    const resolvedTotal =
+      Number(grandTotal) || Number(totalAmount) || Number(subTotal) || 0;
+
+    const savedOrder = await new Order({
+      orderId: generatedId,
+      source: 'QR_SCAN',
+      orderType: 'DINE_IN',
+      tableNumber: String(tableNumber || tableNo || ''),
+      customerName: customerName || 'Guest',
+      customerPhone: String(customerPhone || whatsapp || ''),
+      items: formattedItems,
+      subTotal: Number(subTotal) || resolvedTotal,
+      discount: 0,
+      grandTotal: resolvedTotal,
+      paymentMethod: 'RAZORPAY',
+      paymentStatus: 'PAID',
+      orderStatus: 'NEW',
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+    }).save();
+
     const io = req.app.get('socketio');
     if (io) {
-      io.emit('order_payment_verified', updatedOrder);
+      io.emit('new_order_received', savedOrder);
     }
 
-    return res.status(200).json({
+    return res.status(201).json({
       success: true,
       verified: true,
-      data: updatedOrder,
+      data: savedOrder,
     });
   } catch (error) {
     console.error('Error verifying Razorpay payment:', error);

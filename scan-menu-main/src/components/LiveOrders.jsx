@@ -11,9 +11,14 @@ const normalizeWhatsAppPhone = (phone) => {
   return digits;
 };
 
+const isValidWhatsAppNumber = (phone) => {
+  const digits = String(phone || '').replace(/\D/g, '');
+  return digits.length >= 10;
+};
+
 const buildWhatsAppUrl = (phone, message) => {
   const normalizedPhone = normalizeWhatsAppPhone(phone);
-  if (!normalizedPhone) return null;
+  if (!isValidWhatsAppNumber(phone)) return null;
   return `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`;
 };
 
@@ -29,6 +34,7 @@ export default function LiveOrders() {
 
   const upsertOrder = useCallback((incomingOrder) => {
     if (!incomingOrder) return;
+    if (incomingOrder.paymentStatus !== 'PAID' || incomingOrder.orderStatus === 'Completed') return;
 
     setOrders((prev) => {
       const incomingKey = incomingOrder._id || incomingOrder.orderId;
@@ -67,13 +73,8 @@ export default function LiveOrders() {
       upsertOrder(newOrder);
     });
 
-    socket.on('order_payment_verified', (updatedOrder) => {
-      upsertOrder(updatedOrder);
-    });
-
     return () => {
       socket.off('new_order_received');
-      socket.off('order_payment_verified');
       socket.disconnect();
     };
   }, [fetchOrders, upsertOrder]);
@@ -91,27 +92,30 @@ export default function LiveOrders() {
         ? `${API_URL}/${order._id}`
         : `${API_URL}/${order.orderId}`;
 
-      const response = await axios.patch(updatePath, { orderStatus: 'Completed' });
-      const updatedOrder = response.data?.data || { ...order, orderStatus: 'Completed' };
-      upsertOrder(updatedOrder);
+      await axios.patch(updatePath, { orderStatus: 'Completed' });
 
-      const message = `Hi ${customerName}! Your order #${displayId} is READY! Please collect your parcel from the counter.`;
+      setOrders((prev) =>
+        prev.filter((existing) => (existing._id || existing.orderId) !== orderKey)
+      );
+
+      const message = `Hi ${customerName}, your order #${displayId} is READY! Please collect from counter.`;
       const whatsappUrl = buildWhatsAppUrl(customerPhone, message);
 
       if (whatsappUrl) {
         window.open(whatsappUrl, '_blank');
-      } else {
-        alert('Order marked as done, but no WhatsApp number is available for this customer.');
       }
     } catch (err) {
       console.error('Error updating order:', err);
       alert(err.response?.data?.message || 'Failed to mark order as done.');
+      fetchOrders();
     } finally {
       setUpdatingOrderId(null);
     }
   };
 
-  const activeOrders = orders.filter((order) => order.orderStatus !== 'Completed');
+  const activeOrders = orders.filter(
+    (order) => order.paymentStatus === 'PAID' && order.orderStatus !== 'Completed'
+  );
 
   return (
     <div style={{ padding: '20px', backgroundColor: '#f8fafc', minHeight: '100vh', fontFamily: 'sans-serif' }}>

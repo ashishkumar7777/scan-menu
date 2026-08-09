@@ -3,7 +3,6 @@ import axios from 'axios';
 import { io } from 'socket.io-client';
 
 const API_BASE = 'http://localhost:5000';
-const RESTAURANT_WHATSAPP = '9871782063';
 
 const CATEGORIES = [
   { id: 'breakfast', name: 'Breakfast', icon: '🥞' },
@@ -27,9 +26,6 @@ const loadRazorpayScript = () => {
   });
 };
 
-const formatItemsSummary = (items) =>
-  items.map((item) => `${item.name} x${item.quantity}`).join(', ');
-
 export default function ScanMenu() {
   const pathParts = window.location.pathname.split('/');
   const cafeId = pathParts[2] || "cafebar-dhaba"; 
@@ -43,6 +39,8 @@ export default function ScanMenu() {
   const [activeCategory, setActiveCategory] = useState('breakfast');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successOrderId, setSuccessOrderId] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
 
@@ -115,10 +113,9 @@ export default function ScanMenu() {
     setShowCheckoutModal(false);
   };
 
-  const openWhatsAppReceipt = (orderId, name, items) => {
-    const message = `Hello! My order #${orderId} for ${items} is placed. Name: ${name}`;
-    const encodedText = encodeURIComponent(message);
-    window.open(`https://wa.me/${RESTAURANT_WHATSAPP}?text=${encodedText}`, '_blank');
+  const closeSuccessModal = () => {
+    setShowSuccessModal(false);
+    setSuccessOrderId('');
   };
 
   const handleProceedToPay = async () => {
@@ -130,35 +127,16 @@ export default function ScanMenu() {
 
     setIsSubmitting(true);
     const orderId = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
-    const itemsSummary = formatItemsSummary(cart);
 
-    const orderPayload = {
-      orderId,
-      source: 'QR_SCAN',
-      orderType: 'DINE_IN',
-      tableNumber: String(tableNumber),
-      customerName: trimmedName,
-      customerPhone: trimmedPhone,
-      items: cart.map((i) => ({
-        id: i.id,
-        itemId: i.id,
-        name: i.name,
-        price: Number(i.price),
-        quantity: Number(i.quantity),
-      })),
-      subTotal: Number(grandTotalAmount),
-      grandTotal: Number(grandTotalAmount),
-      paymentMethod: 'RAZORPAY',
-      paymentStatus: 'PENDING',
-      orderStatus: 'NEW',
-    };
+    const cartItems = cart.map((i) => ({
+      id: i.id,
+      itemId: i.id,
+      name: i.name,
+      price: Number(i.price),
+      quantity: Number(i.quantity),
+    }));
 
     try {
-      const orderResponse = await axios.post(`${API_BASE}/api/orders/create`, orderPayload);
-      if (!orderResponse.data.success && orderResponse.status !== 201) {
-        throw new Error('Failed to create order');
-      }
-
       const razorpayResponse = await axios.post(`${API_BASE}/api/orders/create-razorpay-order`, {
         amount: Math.round(grandTotalAmount * 100),
         orderId,
@@ -189,16 +167,25 @@ export default function ScanMenu() {
               razorpay_order_id: paymentResponse.razorpay_order_id,
               razorpay_payment_id: paymentResponse.razorpay_payment_id,
               razorpay_signature: paymentResponse.razorpay_signature,
+              orderId,
+              items: cartItems,
+              customerName: trimmedName,
+              customerPhone: trimmedPhone,
+              whatsapp: trimmedPhone,
+              tableNumber: String(tableNumber),
+              subTotal: Number(grandTotalAmount),
+              grandTotal: Number(grandTotalAmount),
             });
 
             if (verifyResponse.data?.success) {
+              const savedToken = verifyResponse.data?.data?.orderId || orderId;
               setCart([]);
               setCustomerName('');
               setCustomerPhone('');
               setShowCheckoutModal(false);
+              setSuccessOrderId(savedToken);
+              setShowSuccessModal(true);
               fetchMenu();
-              openWhatsAppReceipt(orderId, trimmedName, itemsSummary);
-              alert(`Payment successful! Order #${orderId} sent to kitchen.`);
             } else {
               alert('Payment verification failed. Please contact the counter.');
             }
@@ -523,6 +510,55 @@ export default function ScanMenu() {
                   {isSubmitting ? 'Please wait...' : 'Proceed to Pay'}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {showSuccessModal && (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0,0,0,0.55)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 210,
+              padding: '16px',
+            }}
+          >
+            <div
+              style={{
+                width: '100%',
+                maxWidth: '380px',
+                backgroundColor: '#ffffff',
+                borderRadius: '20px',
+                padding: '28px 24px',
+                textAlign: 'center',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
+              }}
+            >
+              <div style={{ fontSize: '48px', marginBottom: '12px' }}>✓</div>
+              <h3 style={{ margin: '0 0 24px 0', fontSize: '22px', color: '#1c1c1e', lineHeight: 1.4 }}>
+                Order Placed Successfully! Token #{successOrderId}
+              </h3>
+              <button
+                type="button"
+                onClick={closeSuccessModal}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  borderRadius: '12px',
+                  border: 'none',
+                  backgroundColor: '#2b7a43',
+                  color: '#ffffff',
+                  fontWeight: '700',
+                  fontSize: '15px',
+                  cursor: 'pointer',
+                }}
+              >
+                Continue Browsing
+              </button>
             </div>
           </div>
         )}

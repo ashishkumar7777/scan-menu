@@ -63,6 +63,14 @@ const orderSchema = new mongoose.Schema(
       type: String,
       default: 'CASH'
     },
+    razorpayOrderId: {
+      type: String,
+      default: ''
+    },
+    razorpayPaymentId: {
+      type: String,
+      default: ''
+    },
     orderStatus: {
       type: String,
       default: 'NEW'

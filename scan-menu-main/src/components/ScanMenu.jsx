@@ -2,12 +2,33 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 
+const API_BASE = 'http://localhost:5000';
+const RESTAURANT_WHATSAPP = '9871782063';
+
 const CATEGORIES = [
   { id: 'breakfast', name: 'Breakfast', icon: '🥞' },
   { id: 'mains', name: 'Mains', icon: '🍲' },
   { id: 'drinks', name: 'Drinks', icon: '🥤' },
   { id: 'desserts', name: 'Desserts', icon: '🍰' },
 ];
+
+const loadRazorpayScript = () => {
+  return new Promise((resolve, reject) => {
+    if (window.Razorpay) {
+      resolve(true);
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = () => resolve(true);
+    script.onerror = () => reject(new Error('Failed to load Razorpay checkout'));
+    document.body.appendChild(script);
+  });
+};
+
+const formatItemsSummary = (items) =>
+  items.map((item) => `${item.name} x${item.quantity}`).join(', ');
 
 export default function ScanMenu() {
   const pathParts = window.location.pathname.split('/');
@@ -21,9 +42,12 @@ export default function ScanMenu() {
   const [cart, setCart] = useState([]);
   const [activeCategory, setActiveCategory] = useState('breakfast');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
 
   const fetchMenu = () => {
-    axios.get('http://localhost:5000/api/items')
+    axios.get(`${API_BASE}/api/items`)
       .then((res) => {
         setMenuItems(res.data);
         setLoading(false);
@@ -38,7 +62,7 @@ export default function ScanMenu() {
     fetchMenu();
 
     // 🟢 Real-time Socket sync for Inventory & Order Changes
-    const socket = io('http://localhost:5000');
+    const socket = io(API_BASE);
     socket.on('new_order_received', () => fetchMenu());
     socket.on('item_status_changed', () => fetchMenu());
 
@@ -81,43 +105,124 @@ export default function ScanMenu() {
   const totalItemsCount = cart.reduce((total, item) => total + item.quantity, 0);
   const grandTotalAmount = cart.reduce((total, item) => total + (item.price * item.quantity), 0);
 
-  const handleCheckout = async () => {
-    if (cart.length === 0) return alert("Your cart is empty!");
+  const openCheckoutModal = () => {
+    if (cart.length === 0) return alert('Your cart is empty!');
+    setShowCheckoutModal(true);
+  };
+
+  const closeCheckoutModal = () => {
+    if (isSubmitting) return;
+    setShowCheckoutModal(false);
+  };
+
+  const openWhatsAppReceipt = (orderId, name, items) => {
+    const message = `Hello! My order #${orderId} for ${items} is placed. Name: ${name}`;
+    const encodedText = encodeURIComponent(message);
+    window.open(`https://wa.me/${RESTAURANT_WHATSAPP}?text=${encodedText}`, '_blank');
+  };
+
+  const handleProceedToPay = async () => {
+    const trimmedName = customerName.trim();
+    const trimmedPhone = customerPhone.replace(/\D/g, '');
+
+    if (!trimmedName) return alert('Please enter your name.');
+    if (trimmedPhone.length < 10) return alert('Please enter a valid WhatsApp mobile number.');
 
     setIsSubmitting(true);
-    const simulatedOrderId = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
+    const orderId = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
+    const itemsSummary = formatItemsSummary(cart);
 
     const orderPayload = {
-      orderId: simulatedOrderId,
+      orderId,
       source: 'QR_SCAN',
       orderType: 'DINE_IN',
       tableNumber: String(tableNumber),
-      items: cart.map(i => ({
+      customerName: trimmedName,
+      customerPhone: trimmedPhone,
+      items: cart.map((i) => ({
         id: i.id,
         itemId: i.id,
         name: i.name,
         price: Number(i.price),
-        quantity: Number(i.quantity)
+        quantity: Number(i.quantity),
       })),
       subTotal: Number(grandTotalAmount),
       grandTotal: Number(grandTotalAmount),
-      paymentMethod: 'UPI',
-      paymentStatus: 'PENDING'
+      paymentMethod: 'RAZORPAY',
+      paymentStatus: 'PENDING',
+      orderStatus: 'NEW',
     };
 
     try {
-      const response = await axios.post('http://localhost:5000/api/orders/create', orderPayload);
-      
-      if (response.data.success || response.status === 201) {
-        setCart([]);
-        alert(`🎉 Order #${simulatedOrderId} Placed Successfully! Sent to kitchen.`);
-        fetchMenu();
+      const orderResponse = await axios.post(`${API_BASE}/api/orders/create`, orderPayload);
+      if (!orderResponse.data.success && orderResponse.status !== 201) {
+        throw new Error('Failed to create order');
       }
+
+      const razorpayResponse = await axios.post(`${API_BASE}/api/orders/create-razorpay-order`, {
+        amount: Math.round(grandTotalAmount * 100),
+        orderId,
+      });
+
+      const razorpayOrder = razorpayResponse.data?.data;
+      if (!razorpayOrder?.id || !razorpayOrder?.key_id) {
+        throw new Error('Failed to create Razorpay payment order');
+      }
+
+      await loadRazorpayScript();
+
+      const options = {
+        key: razorpayOrder.key_id,
+        amount: razorpayOrder.amount,
+        currency: razorpayOrder.currency || 'INR',
+        name: cafeId.replace('-', ' '),
+        description: `Table ${tableNumber} • Order ${orderId}`,
+        order_id: razorpayOrder.id,
+        prefill: {
+          name: trimmedName,
+          contact: trimmedPhone,
+        },
+        theme: { color: '#2b7a43' },
+        handler: async (paymentResponse) => {
+          try {
+            const verifyResponse = await axios.post(`${API_BASE}/api/orders/verify-payment`, {
+              razorpay_order_id: paymentResponse.razorpay_order_id,
+              razorpay_payment_id: paymentResponse.razorpay_payment_id,
+              razorpay_signature: paymentResponse.razorpay_signature,
+            });
+
+            if (verifyResponse.data?.success) {
+              setCart([]);
+              setCustomerName('');
+              setCustomerPhone('');
+              setShowCheckoutModal(false);
+              fetchMenu();
+              openWhatsAppReceipt(orderId, trimmedName, itemsSummary);
+              alert(`Payment successful! Order #${orderId} sent to kitchen.`);
+            } else {
+              alert('Payment verification failed. Please contact the counter.');
+            }
+          } catch (verifyErr) {
+            console.error('Payment verification error:', verifyErr);
+            alert(verifyErr.response?.data?.message || 'Payment verification failed.');
+          } finally {
+            setIsSubmitting(false);
+          }
+        },
+        modal: {
+          ondismiss: () => setIsSubmitting(false),
+        },
+      };
+
+      const razorpayCheckout = new window.Razorpay(options);
+      razorpayCheckout.on('payment.failed', () => {
+        setIsSubmitting(false);
+        alert('Payment failed. Please try again.');
+      });
+      razorpayCheckout.open();
     } catch (err) {
-      console.error("Order submit detailed error:", err.response?.data || err.message);
-      const errorMsg = err.response?.data?.message || err.message;
-      alert(`Order process hone mein issue aaya!\nDetails: ${errorMsg}`);
-    } finally {
+      console.error('Checkout error:', err.response?.data || err.message);
+      alert(err.response?.data?.message || err.message || 'Unable to start payment.');
       setIsSubmitting(false);
     }
   };
@@ -288,7 +393,7 @@ export default function ScanMenu() {
                 <span style={{ fontSize: '16px', fontWeight: '700' }}>View Cart • ₹{grandTotalAmount}</span>
               </div>
               <button 
-                onClick={handleCheckout}
+                onClick={openCheckoutModal}
                 disabled={isSubmitting}
                 style={{ 
                   backgroundColor: '#1e542e', 
@@ -306,8 +411,118 @@ export default function ScanMenu() {
                   flexShrink: 0
                 }}
               >
-                {isSubmitting ? 'Sending...' : 'Place Order ➔'}
+                {isSubmitting ? 'Processing...' : 'Place Order ➔'}
               </button>
+            </div>
+          </div>
+        )}
+
+        {showCheckoutModal && (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0,0,0,0.55)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 200,
+              padding: '16px',
+            }}
+            onClick={closeCheckoutModal}
+          >
+            <div
+              style={{
+                width: '100%',
+                maxWidth: '380px',
+                backgroundColor: '#ffffff',
+                borderRadius: '20px',
+                padding: '24px',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{ margin: '0 0 8px 0', fontSize: '20px', color: '#1c1c1e' }}>Proceed to Pay</h3>
+              <p style={{ margin: '0 0 20px 0', fontSize: '14px', color: '#636366' }}>
+                Enter your details to complete payment of ₹{grandTotalAmount}.
+              </p>
+
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#1c1c1e', marginBottom: '6px' }}>
+                Customer Name
+              </label>
+              <input
+                type="text"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                placeholder="Your name"
+                disabled={isSubmitting}
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  borderRadius: '12px',
+                  border: '1px solid #e5e5ea',
+                  marginBottom: '16px',
+                  fontSize: '15px',
+                  boxSizing: 'border-box',
+                }}
+              />
+
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#1c1c1e', marginBottom: '6px' }}>
+                WhatsApp Mobile Number
+              </label>
+              <input
+                type="tel"
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e.target.value)}
+                placeholder="10-digit mobile number"
+                disabled={isSubmitting}
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  borderRadius: '12px',
+                  border: '1px solid #e5e5ea',
+                  marginBottom: '20px',
+                  fontSize: '15px',
+                  boxSizing: 'border-box',
+                }}
+              />
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={closeCheckoutModal}
+                  disabled={isSubmitting}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    borderRadius: '12px',
+                    border: '1px solid #e5e5ea',
+                    backgroundColor: '#ffffff',
+                    color: '#1c1c1e',
+                    fontWeight: '600',
+                    cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleProceedToPay}
+                  disabled={isSubmitting}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    borderRadius: '12px',
+                    border: 'none',
+                    backgroundColor: '#2b7a43',
+                    color: '#ffffff',
+                    fontWeight: '700',
+                    cursor: isSubmitting ? 'wait' : 'pointer',
+                  }}
+                >
+                  {isSubmitting ? 'Please wait...' : 'Proceed to Pay'}
+                </button>
+              </div>
             </div>
           </div>
         )}

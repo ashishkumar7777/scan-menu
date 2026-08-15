@@ -160,7 +160,8 @@ router.post('/create-razorpay-order', async (req, res) => {
 // Verify Razorpay payment signature and persist order only after success
 router.post('/verify-payment', async (req, res) => {
   try {
-    if (!keySecret) {
+    const secret = process.env.RAZORPAY_KEY_SECRET || keySecret;
+    if (!secret) {
       return res.status(500).json({
         success: false,
         message: 'Razorpay is not configured. Set RAZORPAY_KEY_SECRET.',
@@ -171,15 +172,17 @@ router.post('/verify-payment', async (req, res) => {
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature,
-      items,
       customerName,
+      whatsappNumber,
       customerPhone,
       whatsapp,
-      tableNumber,
       tableNo,
+      tableNumber,
+      items,
+      cartItems,
+      totalAmount,
       subTotal,
       grandTotal,
-      totalAmount,
       orderId,
     } = req.body;
 
@@ -191,7 +194,7 @@ router.post('/verify-payment', async (req, res) => {
     }
 
     const expectedSignature = crypto
-      .createHmac('sha256', keySecret)
+      .createHmac('sha256', secret)
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
       .digest('hex');
 
@@ -208,6 +211,7 @@ router.post('/verify-payment', async (req, res) => {
       });
     }
 
+    // Look for an existing order by razorpayOrderId
     const existingOrder = await Order.findOne({ razorpayOrderId: razorpay_order_id });
     if (existingOrder) {
       return res.status(200).json({
@@ -217,26 +221,21 @@ router.post('/verify-payment', async (req, res) => {
       });
     }
 
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cart items are required to save the order after payment.',
-        verified: true,
-      });
-    }
-
-    const formattedItems = formatOrderItems(items);
+    // If NOT found, create a new Order document in MongoDB with paymentStatus: "PAID" and orderStatus: "NEW"
+    const orderItems = items || cartItems || [];
+    const formattedItems = formatOrderItems(orderItems);
+    const resolvedTableNo = tableNo || tableNumber || '';
+    const resolvedPhone = whatsappNumber || customerPhone || whatsapp || '';
+    const resolvedTotal = Number(totalAmount) || Number(grandTotal) || Number(subTotal) || 0;
     const generatedId = orderId || `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
-    const resolvedTotal =
-      Number(grandTotal) || Number(totalAmount) || Number(subTotal) || 0;
 
     const savedOrder = await new Order({
       orderId: generatedId,
       source: 'QR_SCAN',
       orderType: 'DINE_IN',
-      tableNumber: String(tableNumber || tableNo || ''),
+      tableNumber: String(resolvedTableNo),
       customerName: customerName || 'Guest',
-      customerPhone: String(customerPhone || whatsapp || ''),
+      customerPhone: String(resolvedPhone),
       items: formattedItems,
       subTotal: Number(subTotal) || resolvedTotal,
       discount: 0,

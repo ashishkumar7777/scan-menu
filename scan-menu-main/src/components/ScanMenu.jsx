@@ -167,14 +167,11 @@ export default function ScanMenu() {
               razorpay_order_id: paymentResponse.razorpay_order_id,
               razorpay_payment_id: paymentResponse.razorpay_payment_id,
               razorpay_signature: paymentResponse.razorpay_signature,
-              orderId,
-              items: cartItems,
               customerName: trimmedName,
-              customerPhone: trimmedPhone,
-              whatsapp: trimmedPhone,
+              whatsappNumber: trimmedPhone,
               tableNumber: String(tableNumber),
-              subTotal: Number(grandTotalAmount),
-              grandTotal: Number(grandTotalAmount),
+              cartItems: cartItems,
+              totalAmount: Number(grandTotalAmount),
             });
 
             if (verifyResponse.data?.success) {

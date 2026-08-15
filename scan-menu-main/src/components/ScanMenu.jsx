@@ -94,7 +94,7 @@ export default function ScanMenu() {
       if (existingItem.quantity === 1) {
         return prevCart.filter((item) => item.id !== productId);
       }
-      return prevCart.map((item) =>
+      return prevCart.map((item) => 
         item.id === productId ? { ...item, quantity: item.quantity - 1 } : item
       );
     });

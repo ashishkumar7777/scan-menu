@@ -1,22 +1,30 @@
 const mongoose = require('mongoose');
 
 const itemSchema = new mongoose.Schema({
+  id: {
+    type: String
+  },
   name: {
     type: String,
-    required: true, // e.g., "Cheese Margherita Pizza"
+    required: true,
   },
   price: {
     type: Number,
     required: true,
   },
+  category: {
+    type: String,
+    required: true,
+    trim: true,
+    lowercase: true, // Stores all categories in lowercase for clean querying
+  },
   currentStock: {
     type: Number,
-    required: true,
-    default: 0, // e.g., 50
+    default: 50,
   },
   lowStockThreshold: {
     type: Number,
-    default: 5, // Jab stock 5 ya usse kam bacha ho toh warning alert do
+    default: 5,
   },
   isAvailable: {
     type: Boolean,

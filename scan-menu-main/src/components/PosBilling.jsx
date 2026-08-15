@@ -5,10 +5,25 @@ import { io } from 'socket.io-client';
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const CATEGORIES = ['all', 'mains', 'breakfast', 'drinks', 'desserts'];
 
+const ORDER_TYPES = [
+  { id: 'DINE_IN', label: '🍽️ Dine-in' },
+  { id: 'TAKEAWAY', label: '🥡 Takeaway' },
+  { id: 'DELIVERY', label: '🛵 Delivery' },
+];
+
+const PAYMENT_METHODS = [
+  { id: 'CASH', label: '💵 Cash' },
+  { id: 'UPI', label: '📱 UPI / QR' },
+  { id: 'CARD', label: '💳 Card' },
+];
+
 export default function PosBilling() {
   const [items, setItems] = useState([]);
   const [cart, setCart] = useState([]);
   const [activeCategory, setActiveCategory] = useState('all');
+  const [orderType, setOrderType] = useState('TAKEAWAY');
+  const [paymentMethod, setPaymentMethod] = useState('CASH');
+  const [tableNo, setTableNo] = useState('');
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -42,8 +57,8 @@ export default function PosBilling() {
 
     setItems((prevItems) =>
       prevItems.map((item) =>
-        (item._id === itemId || item.id === itemId) 
-          ? { ...item, isAvailable: !item.isAvailable } 
+        item._id === itemId || item.id === itemId
+          ? { ...item, isAvailable: !item.isAvailable }
           : item
       )
     );
@@ -55,8 +70,8 @@ export default function PosBilling() {
       if (res.data.success) {
         setItems((prevItems) =>
           prevItems.map((item) =>
-            (item._id === itemId || item.id === itemId) 
-              ? { ...item, isAvailable: res.data.isAvailable } 
+            item._id === itemId || item.id === itemId
+              ? { ...item, isAvailable: res.data.isAvailable }
               : item
           )
         );
@@ -73,14 +88,16 @@ export default function PosBilling() {
     const itemId = item._id || item.id;
 
     setCart((prevCart) => {
-      const existing = prevCart.find((c) => (c._id === itemId || c.id === itemId));
+      const existing = prevCart.find((c) => c._id === itemId || c.id === itemId);
       if (existing) {
         if (item.trackStock && existing.quantity >= item.stockQuantity) {
           alert(`Max stock reached (${item.stockQuantity} available)`);
           return prevCart;
         }
         return prevCart.map((c) =>
-          (c._id === itemId || c.id === itemId) ? { ...c, quantity: c.quantity + 1 } : c
+          c._id === itemId || c.id === itemId
+            ? { ...c, quantity: c.quantity + 1 }
+            : c
         );
       }
       return [...prevCart, { ...item, id: itemId, quantity: 1 }];
@@ -106,7 +123,9 @@ export default function PosBilling() {
   };
 
   const removeFromCart = (itemId) => {
-    setCart((prevCart) => prevCart.filter((item) => (item._id !== itemId && item.id !== itemId)));
+    setCart((prevCart) =>
+      prevCart.filter((item) => item._id !== itemId && item.id !== itemId)
+    );
   };
 
   const clearCart = () => setCart([]);
@@ -114,7 +133,11 @@ export default function PosBilling() {
   const filteredItems =
     activeCategory === 'all'
       ? items
-      : items.filter((item) => item.category === activeCategory);
+      : items.filter(
+          (item) =>
+            item.category?.toString().toLowerCase().trim() ===
+            activeCategory.toLowerCase().trim()
+        );
 
   const subTotal = cart.reduce(
     (sum, item) => sum + (Number(item.price) || 0) * item.quantity,
@@ -123,6 +146,10 @@ export default function PosBilling() {
 
   const handleCreateOrder = async () => {
     if (cart.length === 0) return;
+    if (orderType === 'DINE_IN' && !tableNo.trim()) {
+      alert('Please enter a Table Number for Dine-in orders.');
+      return;
+    }
 
     setIsSubmitting(true);
     const generatedOrderId = `POS-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -130,7 +157,8 @@ export default function PosBilling() {
     const orderData = {
       orderId: generatedOrderId,
       source: 'POS_COUNTER',
-      orderType: 'TAKEAWAY',
+      orderType,
+      tableNo: orderType === 'DINE_IN' ? tableNo : '',
       items: cart.map((i) => ({
         itemId: i._id || i.id,
         name: i.name || 'Item',
@@ -140,7 +168,7 @@ export default function PosBilling() {
       subTotal: Number(subTotal),
       discount: 0,
       grandTotal: Number(subTotal),
-      paymentMethod: 'CASH',
+      paymentMethod,
       paymentStatus: 'PAID',
     };
 
@@ -152,6 +180,7 @@ export default function PosBilling() {
       if (response.data.success || response.status === 201) {
         alert(`🎉 POS Order #${generatedOrderId} Placed Successfully!`);
         setCart([]);
+        setTableNo('');
         fetchItems();
       }
     } catch (error) {
@@ -175,7 +204,6 @@ export default function PosBilling() {
         fontFamily: 'system-ui, -apple-system, sans-serif',
       }}
     >
-      {/* Menu Grid Left */}
       <div style={{ flex: 2 }}>
         <h2>💻 FastPOS Counter Console</h2>
 
@@ -297,7 +325,6 @@ export default function PosBilling() {
         )}
       </div>
 
-      {/* Cart Summary Right */}
       <div
         style={{
           flex: 1,
@@ -335,20 +362,75 @@ export default function PosBilling() {
               </button>
             )}
           </div>
+
           <hr style={{ margin: '10px 0', borderColor: '#e2e8f0' }} />
+
+          <div style={{ marginBottom: '12px' }}>
+            <label
+              style={{
+                display: 'block',
+                fontSize: '12px',
+                fontWeight: 'bold',
+                color: '#64748b',
+                marginBottom: '6px',
+              }}
+            >
+              Order Channel
+            </label>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              {ORDER_TYPES.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setOrderType(t.id)}
+                  style={{
+                    flex: 1,
+                    padding: '6px 8px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    border: '1px solid #cbd5e1',
+                    cursor: 'pointer',
+                    fontWeight: '600',
+                    background: orderType === t.id ? '#2563eb' : '#f8fafc',
+                    color: orderType === t.id ? '#fff' : '#334155',
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {orderType === 'DINE_IN' && (
+            <div style={{ marginBottom: '12px' }}>
+              <input
+                type="text"
+                placeholder="Table Number (e.g. T-4)"
+                value={tableNo}
+                onChange={(e) => setTableNo(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  boxSizing: 'border-box',
+                  fontSize: '13px',
+                }}
+              />
+            </div>
+          )}
 
           {cart.length === 0 ? (
             <p
               style={{
                 color: '#94a3b8',
                 textAlign: 'center',
-                margin: '40px 0',
+                margin: '30px 0',
               }}
             >
               Cart is empty. Tap an item to add it to the order.
             </p>
           ) : (
-            <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
+            <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
               {cart.map((i) => {
                 const cartItemId = i._id || i.id;
                 return (
@@ -358,14 +440,14 @@ export default function PosBilling() {
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      marginBottom: '12px',
+                      marginBottom: '10px',
                       paddingBottom: '8px',
                       borderBottom: '1px solid #f1f5f9',
                     }}
                   >
                     <div style={{ flex: 1 }}>
-                      <strong style={{ fontSize: '14px' }}>{i.name}</strong>
-                      <div style={{ fontSize: '12px', color: '#64748b' }}>
+                      <strong style={{ fontSize: '13px' }}>{i.name}</strong>
+                      <div style={{ fontSize: '11px', color: '#64748b' }}>
                         ₹{i.price} each
                       </div>
                     </div>
@@ -374,14 +456,14 @@ export default function PosBilling() {
                       style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '8px',
-                        marginRight: '12px',
+                        gap: '6px',
+                        marginRight: '10px',
                       }}
                     >
                       <button
                         onClick={() => updateQuantity(cartItemId, -1)}
                         style={{
-                          padding: '2px 8px',
+                          padding: '2px 6px',
                           border: '1px solid #cbd5e1',
                           borderRadius: '4px',
                           background: '#fff',
@@ -390,13 +472,13 @@ export default function PosBilling() {
                       >
                         -
                       </button>
-                      <span style={{ fontWeight: 'bold', fontSize: '14px' }}>
+                      <span style={{ fontWeight: 'bold', fontSize: '13px' }}>
                         {i.quantity}
                       </span>
                       <button
                         onClick={() => updateQuantity(cartItemId, 1)}
                         style={{
-                          padding: '2px 8px',
+                          padding: '2px 6px',
                           border: '1px solid #cbd5e1',
                           borderRadius: '4px',
                           background: '#fff',
@@ -408,7 +490,7 @@ export default function PosBilling() {
                     </div>
 
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontWeight: 'bold' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: '13px' }}>
                         ₹{i.price * i.quantity}
                       </div>
                       <button
@@ -416,7 +498,7 @@ export default function PosBilling() {
                         style={{
                           background: 'none',
                           border: 'none',
-                          color: '#94a3b8',
+                          color: '#ef4444',
                           cursor: 'pointer',
                           fontSize: '11px',
                           padding: 0,
@@ -433,6 +515,41 @@ export default function PosBilling() {
         </div>
 
         <div>
+          <div style={{ marginBottom: '10px' }}>
+            <label
+              style={{
+                display: 'block',
+                fontSize: '12px',
+                fontWeight: 'bold',
+                color: '#64748b',
+                marginBottom: '6px',
+              }}
+            >
+              Payment Method
+            </label>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              {PAYMENT_METHODS.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => setPaymentMethod(p.id)}
+                  style={{
+                    flex: 1,
+                    padding: '6px 8px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    border: '1px solid #cbd5e1',
+                    cursor: 'pointer',
+                    fontWeight: '600',
+                    background: paymentMethod === p.id ? '#16a34a' : '#f8fafc',
+                    color: paymentMethod === p.id ? '#fff' : '#334155',
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <hr style={{ margin: '10px 0', borderColor: '#e2e8f0' }} />
           <h2
             style={{
@@ -450,18 +567,17 @@ export default function PosBilling() {
             style={{
               width: '100%',
               padding: '12px',
-              marginTop: '10px',
+              marginTop: '5px',
               background: cart.length > 0 ? '#16a34a' : '#cbd5e1',
               color: '#fff',
               border: 'none',
               borderRadius: '8px',
               fontWeight: 'bold',
-              fontSize: '16px',
+              fontSize: '15px',
               cursor: cart.length > 0 ? 'pointer' : 'not-allowed',
-              transition: 'background 0.2s',
             }}
           >
-            {isSubmitting ? 'Processing...' : 'Create Order & Print'}
+            {isSubmitting ? 'Processing...' : `Create Order & Print (₹${subTotal})`}
           </button>
         </div>
       </div>

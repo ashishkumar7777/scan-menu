@@ -11,30 +11,39 @@ connectDB();
 const app = express();
 const server = http.createServer(app);
 
-// Enable CORS for React Frontend
 app.use(cors());
 app.use(express.json());
 
-// Socket.io Setup
 const io = new Server(server, {
   cors: {
-    origin: "*", // Allows requests from React Frontend
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"]
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
   }
 });
 
 app.set('socketio', io);
+app.set('io', io);
 
 io.on('connection', (socket) => {
   console.log(`Socket Connected: ${socket.id}`);
   socket.on('disconnect', () => console.log('Socket Disconnected'));
 });
 
-// Register Routes
-app.use('/api/items', require('./routes/itemRoutes'));
-app.use('/api/categories', require('./routes/categoryRoutes')); // 👈 Added Category Route
-app.use('/api/orders', require('./routes/orderRoutes'));
-app.use('/api/reports', require('./routes/reports'));
+// Routes
+const orderRoutes = require('./routes/orderRoutes');
+const itemRoutes = require('./routes/itemRoutes');
+const categoryRoutes = require('./routes/categoryRoutes');
+const reportRoutes = require('./routes/reports');
+
+app.use('/api/items', itemRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/reports', reportRoutes);
+
+// Mount Order routes to all possible endpoints used by QR / POS
+app.use('/api/orders', orderRoutes);
+app.use('/api/order', orderRoutes);
+app.use('/api/payment', orderRoutes);
+app.use('/api/razorpay', orderRoutes);
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Backend Server running on port ${PORT}`));

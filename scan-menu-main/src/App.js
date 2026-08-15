@@ -2,9 +2,10 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import ScanMenu from './components/ScanMenu';
 import PosBilling from './components/PosBilling';
-import LiveOrders from './components/LiveOrders';
+import KitchenKDS from './components/KitchenKDS';
+import OrderHistory from './components/OrderHistory';
 import InventoryManager from './components/InventoryManager';
-import SalesReport from './components/SalesReport'; // ADDED: SalesReport import
+import SalesReport from './components/SalesReport';
 
 function NavigationBar() {
   const location = useLocation();
@@ -17,12 +18,17 @@ function NavigationBar() {
     borderRadius: '6px',
     fontSize: '14px',
     fontWeight: '500',
-    transition: 'background 0.2s ease'
+    transition: 'background 0.2s ease',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px'
   });
 
   return (
-    <nav style={{ background: '#0f172a', padding: '10px 20px', display: 'flex', gap: '15px', alignItems: 'center' }}>
-      <span style={{ color: '#fff', fontWeight: 'bold', marginRight: '20px' }}>⚡ RestoManager System</span>
+    <nav style={{ background: '#0f172a', padding: '10px 20px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+      <span style={{ color: '#fff', fontWeight: 'bold', marginRight: '16px', fontSize: '15px' }}>
+        ⚡ RestoManager System
+      </span>
       
       <Link to="/" style={getLinkStyle('/', '#3b82f6')}>
         📱 QR Mobile View
@@ -36,11 +42,16 @@ function NavigationBar() {
         📦 Stock Inventory
       </Link>
       
-      <Link to="/orders" style={getLinkStyle('/orders', '#16a34a')}>
-        📋 Live Orders
+      {/* Dedicated Kitchen Display Screen */}
+      <Link to="/kds" style={getLinkStyle('/kds', '#16a34a')}>
+        🍳 Kitchen KDS
       </Link>
 
-      {/* ADDED: Reports Navigation Link */}
+      {/* Dedicated Order Details & History Screen */}
+      <Link to="/history" style={getLinkStyle('/history', '#0284c7')}>
+        📑 Order History
+      </Link>
+
       <Link to="/reports" style={getLinkStyle('/reports', '#8b5cf6')}>
         📊 Sales Reports
       </Link>
@@ -61,8 +72,12 @@ export default function App() {
           <Route path="/menu" element={<ScanMenu />} />
           <Route path="/pos" element={<PosBilling />} />
           <Route path="/inventory" element={<InventoryManager />} />
-          <Route path="/orders" element={<LiveOrders />} />
-          {/* ADDED: Reports Route */}
+          
+          {/* Separated Routes for KDS and Order History */}
+          <Route path="/kds" element={<KitchenKDS />} />
+          <Route path="/orders" element={<KitchenKDS />} />
+          <Route path="/history" element={<OrderHistory />} />
+
           <Route path="/reports" element={<SalesReport />} />
         </Routes>
       </div>

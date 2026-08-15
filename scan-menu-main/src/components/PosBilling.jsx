@@ -18,7 +18,7 @@ const PAYMENT_METHODS = [
 
 export default function PosBilling() {
   const [items, setItems] = useState([]);
-  const [categories, setCategories] = useState([]); // 👈 Dynamic Categories
+  const [categories, setCategories] = useState([]);
   const [cart, setCart] = useState([]);
   const [activeCategory, setActiveCategory] = useState('all');
   const [orderType, setOrderType] = useState('TAKEAWAY');
@@ -27,7 +27,6 @@ export default function PosBilling() {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch Items and Categories together
   const fetchAllData = useCallback(async () => {
     try {
       const [itemsRes, catRes] = await Promise.all([
@@ -84,10 +83,8 @@ export default function PosBilling() {
   };
 
   const addToCart = (item) => {
-    const isOutOfStock =
-      !item.isAvailable ||
-      (item.currentStock !== undefined && item.currentStock <= 0) ||
-      (item.stockQuantity !== undefined && item.stockQuantity <= 0);
+    const stockCount = item.currentStock !== undefined ? item.currentStock : item.stockQuantity;
+    const isOutOfStock = !item.isAvailable || (stockCount !== undefined && stockCount <= 0);
 
     if (isOutOfStock) return;
 
@@ -136,7 +133,6 @@ export default function PosBilling() {
 
   const clearCart = () => setCart([]);
 
-  // Case-Insensitive Filter
   const filteredItems =
     activeCategory === 'all'
       ? items
@@ -175,8 +171,10 @@ export default function PosBilling() {
       subTotal: Number(subTotal),
       discount: 0,
       grandTotal: Number(subTotal),
+      totalAmount: Number(subTotal),
       paymentMethod,
       paymentStatus: 'PAID',
+      status: 'NEW', // Explicitly marked NEW so it enters active KDS queue
     };
 
     try {
@@ -210,7 +208,6 @@ export default function PosBilling() {
       <div style={{ flex: 2 }}>
         <h2>💻 FastPOS Counter Console</h2>
 
-        {/* Dynamic Category Tabs */}
         <div style={{ margin: '15px 0', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button
             onClick={() => setActiveCategory('all')}
@@ -228,14 +225,14 @@ export default function PosBilling() {
           </button>
           {categories.map((cat) => (
             <button
-              key={cat.slug}
-              onClick={() => setActiveCategory(cat.slug)}
+              key={cat.slug || cat.id || cat.name}
+              onClick={() => setActiveCategory(cat.slug || cat.id || cat.name)}
               style={{
                 padding: '8px 16px',
                 borderRadius: '20px',
                 border: 'none',
-                background: activeCategory === cat.slug ? '#2563eb' : '#e2e8f0',
-                color: activeCategory === cat.slug ? '#fff' : '#0f172a',
+                background: activeCategory === (cat.slug || cat.id || cat.name) ? '#2563eb' : '#e2e8f0',
+                color: activeCategory === (cat.slug || cat.id || cat.name) ? '#fff' : '#0f172a',
                 cursor: 'pointer',
                 fontWeight: '600',
                 textTransform: 'capitalize',
@@ -395,12 +392,12 @@ export default function PosBilling() {
             </div>
           </div>
 
-          {/* Dine-in Table Number */}
+          {/* Table Input */}
           {orderType === 'DINE_IN' && (
             <div style={{ marginBottom: '12px' }}>
               <input
                 type="text"
-                placeholder="Table Number (e.g. T-4)"
+                placeholder="Table Number (e.g. 7)"
                 value={tableNo}
                 onChange={(e) => setTableNo(e.target.value)}
                 style={{
@@ -415,7 +412,7 @@ export default function PosBilling() {
             </div>
           )}
 
-          {/* Cart List */}
+          {/* Cart Items */}
           {cart.length === 0 ? (
             <p style={{ color: '#94a3b8', textAlign: 'center', margin: '30px 0' }}>
               Cart is empty. Tap an item to add it to the order.
@@ -492,7 +489,7 @@ export default function PosBilling() {
           )}
         </div>
 
-        {/* Payment & Submit */}
+        {/* Payment & Action */}
         <div>
           <div style={{ marginBottom: '10px' }}>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '6px' }}>

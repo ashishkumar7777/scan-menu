@@ -1,86 +1,71 @@
 const mongoose = require('mongoose');
 
-// Schema for items in an order with fallbacks for property keys
-const orderItemSchema = new mongoose.Schema(
-  {
-    name: { type: String, trim: true, default: 'Item' },
-    itemName: { type: String, trim: true },
-    title: { type: String, trim: true },
-    price: { type: Number, default: 0 },
-    quantity: { type: Number, default: 1 }
-  },
-  { 
-    _id: false,
-    strict: false 
-  }
-);
-
-const orderSchema = new mongoose.Schema(
+const OrderSchema = new mongoose.Schema(
   {
     orderId: {
       type: String,
       required: true,
-      unique: true
+      unique: true,
+    },
+    tokenNumber: {
+      type: Number,
     },
     source: {
       type: String,
-      default: 'POS_COUNTER'
+      enum: ['POS_COUNTER', 'QR_MENU', 'ONLINE', 'POS'],
+      default: 'POS_COUNTER',
     },
     orderType: {
       type: String,
-      default: 'TAKEAWAY'
+      enum: ['DINE_IN', 'TAKEAWAY', 'DELIVERY'],
+      default: 'TAKEAWAY',
     },
-    tableNumber: {
+    tableNo: {
       type: String,
-      default: ''
+      default: '',
     },
     customerName: {
       type: String,
-      default: 'Guest'
+      default: 'Guest',
     },
-    customerPhone: {
+    whatsappNumber: {
       type: String,
-      default: ''
+      default: '',
     },
-    items: [orderItemSchema],
+    items: [
+      {
+        itemId: { type: String },
+        name: { type: String, required: true },
+        price: { type: Number, required: true },
+        quantity: { type: Number, default: 1 },
+      },
+    ],
     subTotal: {
       type: Number,
-      required: true
-    },
-    discount: {
-      type: Number,
-      default: 0
+      required: true,
     },
     grandTotal: {
       type: Number,
-      required: true
-    },
-    paymentStatus: {
-      type: String,
-      default: 'PAID'
+      required: true,
     },
     paymentMethod: {
       type: String,
-      default: 'CASH'
+      enum: ['CASH', 'UPI', 'CARD', 'ONLINE'],
+      default: 'CASH',
     },
-    razorpayOrderId: {
+    paymentStatus: {
       type: String,
-      default: ''
+      enum: ['PENDING', 'PAID', 'FAILED'],
+      default: 'PAID',
     },
-    razorpayPaymentId: {
+    status: {
       type: String,
-      default: ''
+      enum: ['NEW', 'RECEIVED', 'PREPARING', 'READY', 'COMPLETED', 'SERVED', 'CANCELLED', 'PAID'],
+      default: 'NEW',
+      index: true,
     },
-    orderStatus: {
-      type: String,
-      default: 'NEW'
-    }
   },
-  {
-    timestamps: true
-  }
+  { timestamps: true }
 );
 
-const Order = mongoose.model('Order', orderSchema, 'orders');
-
-module.exports = Order;
+module.exports = mongoose.model('Order', OrderSchema);

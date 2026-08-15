@@ -3,7 +3,6 @@ import axios from 'axios';
 import { io } from 'socket.io-client';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-const CATEGORIES = ['all', 'mains', 'breakfast', 'drinks', 'desserts'];
 
 const ORDER_TYPES = [
   { id: 'DINE_IN', label: '🍽️ Dine-in' },
@@ -19,6 +18,7 @@ const PAYMENT_METHODS = [
 
 export default function PosBilling() {
   const [items, setItems] = useState([]);
+  const [categories, setCategories] = useState([]); // 👈 Dynamic Categories
   const [cart, setCart] = useState([]);
   const [activeCategory, setActiveCategory] = useState('all');
   const [orderType, setOrderType] = useState('TAKEAWAY');
@@ -27,77 +27,83 @@ export default function PosBilling() {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const fetchItems = useCallback(async () => {
+  // Fetch Items and Categories together
+  const fetchAllData = useCallback(async () => {
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/items/all`);
-      setItems(res.data);
+      const [itemsRes, catRes] = await Promise.all([
+        axios.get(`${API_BASE_URL}/api/items/all`),
+        axios.get(`${API_BASE_URL}/api/categories/all`).catch(() => ({ data: [] })),
+      ]);
+
+      setItems(itemsRes.data || []);
+
+      const dynamicCats =
+        catRes.data && catRes.data.length > 0
+          ? catRes.data
+          : [
+              { name: 'Mains', slug: 'mains' },
+              { name: 'Breakfast', slug: 'breakfast' },
+              { name: 'Drinks', slug: 'drinks' },
+              { name: 'Desserts', slug: 'desserts' },
+            ];
+
+      setCategories(dynamicCats);
     } catch (err) {
-      console.error('Database fetch error:', err);
+      console.error('Data fetch error:', err);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchItems();
+    fetchAllData();
 
     const socket = io(API_BASE_URL);
-    socket.on('new_order_received', fetchItems);
-    socket.on('item_status_changed', fetchItems);
+    socket.on('new_order_received', fetchAllData);
+    socket.on('item_status_changed', fetchAllData);
+    socket.on('category_updated', fetchAllData);
 
     return () => {
-      socket.off('new_order_received', fetchItems);
-      socket.off('item_status_changed', fetchItems);
+      socket.off('new_order_received', fetchAllData);
+      socket.off('item_status_changed', fetchAllData);
+      socket.off('category_updated', fetchAllData);
       socket.disconnect();
     };
-  }, [fetchItems]);
+  }, [fetchAllData]);
 
   const toggleAvailability = async (e, itemId) => {
     e.stopPropagation();
-
-    setItems((prevItems) =>
-      prevItems.map((item) =>
-        item._id === itemId || item.id === itemId
-          ? { ...item, isAvailable: !item.isAvailable }
-          : item
-      )
-    );
-
     try {
-      const res = await axios.patch(
-        `${API_BASE_URL}/api/items/${itemId}/toggle-availability`
-      );
+      const res = await axios.patch(`${API_BASE_URL}/api/items/${itemId}/toggle-availability`);
       if (res.data.success) {
-        setItems((prevItems) =>
-          prevItems.map((item) =>
-            item._id === itemId || item.id === itemId
-              ? { ...item, isAvailable: res.data.isAvailable }
-              : item
-          )
-        );
+        fetchAllData();
       }
     } catch (err) {
       console.error('Toggle availability error:', err);
-      fetchItems();
     }
   };
 
   const addToCart = (item) => {
-    if (!item.isAvailable || (item.trackStock && item.stockQuantity <= 0)) return;
+    const isOutOfStock =
+      !item.isAvailable ||
+      (item.currentStock !== undefined && item.currentStock <= 0) ||
+      (item.stockQuantity !== undefined && item.stockQuantity <= 0);
+
+    if (isOutOfStock) return;
 
     const itemId = item._id || item.id;
 
     setCart((prevCart) => {
       const existing = prevCart.find((c) => c._id === itemId || c.id === itemId);
+      const stockLimit = item.currentStock !== undefined ? item.currentStock : item.stockQuantity;
+
       if (existing) {
-        if (item.trackStock && existing.quantity >= item.stockQuantity) {
-          alert(`Max stock reached (${item.stockQuantity} available)`);
+        if (stockLimit !== undefined && existing.quantity >= stockLimit) {
+          alert(`Max stock reached (${stockLimit} available)`);
           return prevCart;
         }
         return prevCart.map((c) =>
-          c._id === itemId || c.id === itemId
-            ? { ...c, quantity: c.quantity + 1 }
-            : c
+          c._id === itemId || c.id === itemId ? { ...c, quantity: c.quantity + 1 } : c
         );
       }
       return [...prevCart, { ...item, id: itemId, quantity: 1 }];
@@ -110,8 +116,10 @@ export default function PosBilling() {
         .map((item) => {
           if (item._id === itemId || item.id === itemId) {
             const newQty = item.quantity + delta;
-            if (item.trackStock && delta > 0 && newQty > item.stockQuantity) {
-              alert(`Max stock reached (${item.stockQuantity} available)`);
+            const stockLimit = item.currentStock !== undefined ? item.currentStock : item.stockQuantity;
+
+            if (stockLimit !== undefined && delta > 0 && newQty > stockLimit) {
+              alert(`Max stock reached (${stockLimit} available)`);
               return item;
             }
             return newQty > 0 ? { ...item, quantity: newQty } : null;
@@ -123,13 +131,12 @@ export default function PosBilling() {
   };
 
   const removeFromCart = (itemId) => {
-    setCart((prevCart) =>
-      prevCart.filter((item) => item._id !== itemId && item.id !== itemId)
-    );
+    setCart((prevCart) => prevCart.filter((item) => item._id !== itemId && item.id !== itemId));
   };
 
   const clearCart = () => setCart([]);
 
+  // Case-Insensitive Filter
   const filteredItems =
     activeCategory === 'all'
       ? items
@@ -173,21 +180,16 @@ export default function PosBilling() {
     };
 
     try {
-      const response = await axios.post(
-        `${API_BASE_URL}/api/orders/create`,
-        orderData
-      );
+      const response = await axios.post(`${API_BASE_URL}/api/orders/create`, orderData);
       if (response.data.success || response.status === 201) {
         alert(`🎉 POS Order #${generatedOrderId} Placed Successfully!`);
         setCart([]);
         setTableNo('');
-        fetchItems();
+        fetchAllData();
       }
     } catch (error) {
       console.error('Error creating order:', error);
-      const errorMsg =
-        error.response?.data?.message || 'Failed to submit order. Please retry.';
-      alert(errorMsg);
+      alert(error.response?.data?.message || 'Failed to submit order.');
     } finally {
       setIsSubmitting(false);
     }
@@ -204,26 +206,42 @@ export default function PosBilling() {
         fontFamily: 'system-ui, -apple-system, sans-serif',
       }}
     >
+      {/* Menu Grid Left */}
       <div style={{ flex: 2 }}>
         <h2>💻 FastPOS Counter Console</h2>
 
-        <div style={{ margin: '15px 0', display: 'flex', gap: '10px' }}>
-          {CATEGORIES.map((cat) => (
+        {/* Dynamic Category Tabs */}
+        <div style={{ margin: '15px 0', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setActiveCategory('all')}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '20px',
+              border: 'none',
+              background: activeCategory === 'all' ? '#2563eb' : '#e2e8f0',
+              color: activeCategory === 'all' ? '#fff' : '#0f172a',
+              cursor: 'pointer',
+              fontWeight: '600',
+            }}
+          >
+            All
+          </button>
+          {categories.map((cat) => (
             <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
+              key={cat.slug}
+              onClick={() => setActiveCategory(cat.slug)}
               style={{
                 padding: '8px 16px',
                 borderRadius: '20px',
                 border: 'none',
-                background: activeCategory === cat ? '#2563eb' : '#e2e8f0',
-                color: activeCategory === cat ? '#fff' : '#0f172a',
+                background: activeCategory === cat.slug ? '#2563eb' : '#e2e8f0',
+                color: activeCategory === cat.slug ? '#fff' : '#0f172a',
                 cursor: 'pointer',
                 fontWeight: '600',
                 textTransform: 'capitalize',
               }}
             >
-              {cat}
+              {cat.name}
             </button>
           ))}
         </div>
@@ -240,9 +258,8 @@ export default function PosBilling() {
           >
             {filteredItems.map((item) => {
               const itemId = item._id || item.id;
-              const isDisabled =
-                !item.isAvailable ||
-                (item.trackStock && item.stockQuantity <= 0);
+              const stockCount = item.currentStock !== undefined ? item.currentStock : item.stockQuantity;
+              const isDisabled = !item.isAvailable || (stockCount !== undefined && stockCount <= 0);
 
               return (
                 <div
@@ -263,13 +280,7 @@ export default function PosBilling() {
                 >
                   <div>
                     <h4 style={{ margin: '0 0 8px 0' }}>{item.name}</h4>
-                    <p
-                      style={{
-                        margin: '0 0 10px 0',
-                        color: '#16a34a',
-                        fontWeight: 'bold',
-                      }}
-                    >
+                    <p style={{ margin: '0 0 10px 0', color: '#16a34a', fontWeight: 'bold' }}>
                       ₹{item.price}
                     </p>
                   </div>
@@ -294,10 +305,8 @@ export default function PosBilling() {
                     >
                       {!item.isAvailable
                         ? 'DISABLED'
-                        : item.trackStock
-                        ? item.stockQuantity <= 0
-                          ? 'SOLD OUT'
-                          : `STOCK: ${item.stockQuantity}`
+                        : stockCount !== undefined && stockCount <= 0
+                        ? 'SOLD OUT'
                         : 'IN STOCK'}
                     </span>
 
@@ -308,9 +317,7 @@ export default function PosBilling() {
                         padding: '4px 8px',
                         borderRadius: '4px',
                         border: 'none',
-                        backgroundColor: item.isAvailable
-                          ? '#ef4444'
-                          : '#22c55e',
+                        backgroundColor: item.isAvailable ? '#ef4444' : '#22c55e',
                         color: '#fff',
                         cursor: 'pointer',
                       }}
@@ -325,6 +332,7 @@ export default function PosBilling() {
         )}
       </div>
 
+      {/* Cart Summary Right */}
       <div
         style={{
           flex: 1,
@@ -338,13 +346,7 @@ export default function PosBilling() {
         }}
       >
         <div>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 style={{ margin: 0 }}>🛒 Current Bill</h3>
             {cart.length > 0 && (
               <button
@@ -365,16 +367,9 @@ export default function PosBilling() {
 
           <hr style={{ margin: '10px 0', borderColor: '#e2e8f0' }} />
 
+          {/* Order Channel Selector */}
           <div style={{ marginBottom: '12px' }}>
-            <label
-              style={{
-                display: 'block',
-                fontSize: '12px',
-                fontWeight: 'bold',
-                color: '#64748b',
-                marginBottom: '6px',
-              }}
-            >
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '6px' }}>
               Order Channel
             </label>
             <div style={{ display: 'flex', gap: '6px' }}>
@@ -400,6 +395,7 @@ export default function PosBilling() {
             </div>
           </div>
 
+          {/* Dine-in Table Number */}
           {orderType === 'DINE_IN' && (
             <div style={{ marginBottom: '12px' }}>
               <input
@@ -419,14 +415,9 @@ export default function PosBilling() {
             </div>
           )}
 
+          {/* Cart List */}
           {cart.length === 0 ? (
-            <p
-              style={{
-                color: '#94a3b8',
-                textAlign: 'center',
-                margin: '30px 0',
-              }}
-            >
+            <p style={{ color: '#94a3b8', textAlign: 'center', margin: '30px 0' }}>
               Cart is empty. Tap an item to add it to the order.
             </p>
           ) : (
@@ -447,19 +438,10 @@ export default function PosBilling() {
                   >
                     <div style={{ flex: 1 }}>
                       <strong style={{ fontSize: '13px' }}>{i.name}</strong>
-                      <div style={{ fontSize: '11px', color: '#64748b' }}>
-                        ₹{i.price} each
-                      </div>
+                      <div style={{ fontSize: '11px', color: '#64748b' }}>₹{i.price} each</div>
                     </div>
 
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        marginRight: '10px',
-                      }}
-                    >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginRight: '10px' }}>
                       <button
                         onClick={() => updateQuantity(cartItemId, -1)}
                         style={{
@@ -472,9 +454,7 @@ export default function PosBilling() {
                       >
                         -
                       </button>
-                      <span style={{ fontWeight: 'bold', fontSize: '13px' }}>
-                        {i.quantity}
-                      </span>
+                      <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{i.quantity}</span>
                       <button
                         onClick={() => updateQuantity(cartItemId, 1)}
                         style={{
@@ -490,9 +470,7 @@ export default function PosBilling() {
                     </div>
 
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontWeight: 'bold', fontSize: '13px' }}>
-                        ₹{i.price * i.quantity}
-                      </div>
+                      <div style={{ fontWeight: 'bold', fontSize: '13px' }}>₹{i.price * i.quantity}</div>
                       <button
                         onClick={() => removeFromCart(cartItemId)}
                         style={{
@@ -514,17 +492,10 @@ export default function PosBilling() {
           )}
         </div>
 
+        {/* Payment & Submit */}
         <div>
           <div style={{ marginBottom: '10px' }}>
-            <label
-              style={{
-                display: 'block',
-                fontSize: '12px',
-                fontWeight: 'bold',
-                color: '#64748b',
-                marginBottom: '6px',
-              }}
-            >
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '6px' }}>
               Payment Method
             </label>
             <div style={{ display: 'flex', gap: '6px' }}>
@@ -551,13 +522,7 @@ export default function PosBilling() {
           </div>
 
           <hr style={{ margin: '10px 0', borderColor: '#e2e8f0' }} />
-          <h2
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              margin: '10px 0',
-            }}
-          >
+          <h2 style={{ display: 'flex', justifyContent: 'space-between', margin: '10px 0' }}>
             <span>Total:</span>
             <span style={{ color: '#2563eb' }}>₹{subTotal}</span>
           </h2>

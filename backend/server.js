@@ -19,7 +19,7 @@ app.use(express.json());
 const io = new Server(server, {
   cors: {
     origin: "*", // Allows requests from React Frontend
-    methods: ["GET", "POST"]
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"]
   }
 });
 
@@ -32,8 +32,8 @@ io.on('connection', (socket) => {
 
 // Register Routes
 app.use('/api/items', require('./routes/itemRoutes'));
+app.use('/api/categories', require('./routes/categoryRoutes')); // 👈 Added Category Route
 app.use('/api/orders', require('./routes/orderRoutes'));
-// ADDED: Register Reports Route
 app.use('/api/reports', require('./routes/reports'));
 
 const PORT = process.env.PORT || 5000;

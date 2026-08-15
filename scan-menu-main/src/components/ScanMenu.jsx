@@ -1,15 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 
-const API_BASE = 'http://localhost:5000';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-const CATEGORIES = [
-  { id: 'breakfast', name: 'Breakfast', icon: '🥞' },
-  { id: 'mains', name: 'Mains', icon: '🍲' },
-  { id: 'drinks', name: 'Drinks', icon: '🥤' },
-  { id: 'desserts', name: 'Desserts', icon: '🍰' },
-];
+// Fallback icon map for standard and custom categories
+const CATEGORY_ICONS = {
+  breakfast: '🥞',
+  mains: '🍲',
+  drinks: '🥤',
+  desserts: '🍰',
+  special: '⭐',
+  chinese: '🥡',
+  tandoor: '🍢',
+  beverages: '🧃',
+  snacks: '🍟',
+};
 
 const loadRazorpayScript = () => {
   return new Promise((resolve, reject) => {
@@ -34,9 +40,10 @@ export default function ScanMenu() {
   const tableNumber = searchParams.get('table') || "7";
 
   const [menuItems, setMenuItems] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState([]);
-  const [activeCategory, setActiveCategory] = useState('breakfast');
+  const [activeCategory, setActiveCategory] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -44,64 +51,103 @@ export default function ScanMenu() {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
 
-  const fetchMenu = () => {
-    axios.get(`${API_BASE}/api/items`)
-      .then((res) => {
-        setMenuItems(res.data);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error("Error fetching MongoDB menu:", err);
-        setLoading(false);
+  // Live Fetch for both Menu Items and Categories
+  const fetchMenu = useCallback(async () => {
+    try {
+      const [itemsRes, catRes] = await Promise.all([
+        axios.get(`${API_BASE}/api/items`),
+        axios.get(`${API_BASE}/api/categories/all`).catch(() => ({ data: [] })),
+      ]);
+
+      const items = itemsRes.data || [];
+      setMenuItems(items);
+
+      let fetchedCats = catRes.data || [];
+      
+      // Fallback: If category collection is empty, derive from items
+      if (!fetchedCats || fetchedCats.length === 0) {
+        const uniqueSlugs = Array.from(
+          new Set(items.map((i) => i.category?.toString().toLowerCase().trim()).filter(Boolean))
+        );
+        fetchedCats = uniqueSlugs.map((slug) => ({
+          name: slug.charAt(0).toUpperCase() + slug.slice(1),
+          slug,
+        }));
+      }
+
+      setCategories(fetchedCats);
+
+      // Set default active category if none selected
+      setActiveCategory((prev) => {
+        if (prev && fetchedCats.some((c) => (c.slug || c.id) === prev)) return prev;
+        return fetchedCats[0]?.slug || fetchedCats[0]?.id || 'mains';
       });
-  };
+    } catch (err) {
+      console.error("Error fetching MongoDB menu/categories:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchMenu();
 
-    // 🟢 Real-time Socket sync for Inventory & Order Changes
+    // Real-time Socket sync for Inventory, Categories & Order Changes
     const socket = io(API_BASE);
-    socket.on('new_order_received', () => fetchMenu());
-    socket.on('item_status_changed', () => fetchMenu());
+    socket.on('new_order_received', fetchMenu);
+    socket.on('item_status_changed', fetchMenu);
+    socket.on('category_updated', fetchMenu);
 
-    return () => socket.disconnect();
-  }, []);
+    return () => {
+      socket.off('new_order_received', fetchMenu);
+      socket.off('item_status_changed', fetchMenu);
+      socket.off('category_updated', fetchMenu);
+      socket.disconnect();
+    };
+  }, [fetchMenu]);
 
   const addToCart = (product) => {
+    const productId = product._id || product.id;
+    const stockLimit = product.currentStock !== undefined ? product.currentStock : product.stockQuantity;
+
     // Prevent adding if out of stock
-    if (!product.isAvailable || (product.trackStock && product.stockQuantity <= 0)) return;
+    if (!product.isAvailable || (product.trackStock && stockLimit <= 0)) return;
 
     setCart((prevCart) => {
-      const existingItem = prevCart.find((item) => item.id === product.id);
+      const existingItem = prevCart.find((item) => (item._id === productId || item.id === productId));
       if (existingItem) {
         // Prevent exceeding available stock
-        if (product.trackStock && existingItem.quantity >= product.stockQuantity) {
-          alert(`Only ${product.stockQuantity} available in stock!`);
+        if (product.trackStock && existingItem.quantity >= stockLimit) {
+          alert(`Only ${stockLimit} available in stock!`);
           return prevCart;
         }
         return prevCart.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          (item._id === productId || item.id === productId)
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
         );
       }
-      return [...prevCart, { ...product, quantity: 1 }];
+      return [...prevCart, { ...product, id: productId, quantity: 1 }];
     });
   };
 
   const removeFromCart = (productId) => {
     setCart((prevCart) => {
-      const existingItem = prevCart.find((item) => item.id === productId);
+      const existingItem = prevCart.find((item) => (item._id === productId || item.id === productId));
       if (!existingItem) return prevCart;
       if (existingItem.quantity === 1) {
-        return prevCart.filter((item) => item.id !== productId);
+        return prevCart.filter((item) => (item._id !== productId && item.id !== productId));
       }
       return prevCart.map((item) => 
-        item.id === productId ? { ...item, quantity: item.quantity - 1 } : item
+        (item._id === productId || item.id === productId)
+          ? { ...item, quantity: item.quantity - 1 }
+          : item
       );
     });
   };
 
   const totalItemsCount = cart.reduce((total, item) => total + item.quantity, 0);
-  const grandTotalAmount = cart.reduce((total, item) => total + (item.price * item.quantity), 0);
+  const grandTotalAmount = cart.reduce((total, item) => total + (Number(item.price) * item.quantity), 0);
 
   const openCheckoutModal = () => {
     if (cart.length === 0) return alert('Your cart is empty!');
@@ -129,8 +175,8 @@ export default function ScanMenu() {
     const orderId = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
 
     const cartItems = cart.map((i) => ({
-      id: i.id,
-      itemId: i.id,
+      id: i._id || i.id,
+      itemId: i._id || i.id,
       name: i.name,
       price: Number(i.price),
       quantity: Number(i.quantity),
@@ -211,7 +257,11 @@ export default function ScanMenu() {
     }
   };
 
-  const filteredMenu = menuItems.filter((item) => item.category === activeCategory);
+  // Case-Insensitive Filter
+  const filteredMenu = menuItems.filter((item) => {
+    if (!activeCategory || activeCategory === 'all') return true;
+    return item.category?.toString().toLowerCase().trim() === activeCategory.toLowerCase().trim();
+  });
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f5f5f7', display: 'flex', justifyContent: 'center', padding: '0', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
@@ -234,33 +284,39 @@ export default function ScanMenu() {
           </div>
         </div>
 
-        {/* Categories Track */}
+        {/* Dynamic Categories Carousel Track */}
         <div style={{ display: 'flex', gap: '16px', overflowX: 'auto', padding: '12px 20px', scrollbarWidth: 'none' }}>
-          {CATEGORIES.map((cat) => (
-            <div 
-              key={cat.id} 
-              onClick={() => setActiveCategory(cat.id)}
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', flexShrink: 0 }}
-            >
-              <div style={{ 
-                width: '64px', 
-                height: '64px', 
-                borderRadius: '50%', 
-                backgroundColor: '#ffffff', 
-                border: activeCategory === cat.id ? '2.5px solid #2b7a43' : '1px solid #e5e5ea',
-                boxShadow: '0 4px 8px rgba(0,0,0,0.04)',
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center',
-                fontSize: '26px'
-              }}>
-                {cat.icon}
+          {categories.map((cat) => {
+            const catSlug = cat.slug || cat.id || cat.name?.toLowerCase().trim();
+            const icon = CATEGORY_ICONS[catSlug] || '🍽️';
+            const isSelected = activeCategory?.toLowerCase().trim() === catSlug;
+
+            return (
+              <div 
+                key={catSlug} 
+                onClick={() => setActiveCategory(catSlug)}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', flexShrink: 0 }}
+              >
+                <div style={{ 
+                  width: '64px', 
+                  height: '64px', 
+                  borderRadius: '50%', 
+                  backgroundColor: '#ffffff', 
+                  border: isSelected ? '2.5px solid #2b7a43' : '1px solid #e5e5ea',
+                  boxShadow: '0 4px 8px rgba(0,0,0,0.04)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  fontSize: '26px'
+                }}>
+                  {icon}
+                </div>
+                <span style={{ fontSize: '12px', marginTop: '8px', color: isSelected ? '#2b7a43' : '#636366', fontWeight: isSelected ? '700' : '600' }}>
+                  {cat.name}
+                </span>
               </div>
-              <span style={{ fontSize: '12px', marginTop: '8px', color: activeCategory === cat.id ? '#2b7a43' : '#636366', fontWeight: activeCategory === cat.id ? '700' : '600' }}>
-                {cat.name}
-              </span>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Items Grid */}
@@ -271,11 +327,13 @@ export default function ScanMenu() {
             </div>
           ) : filteredMenu.length > 0 ? (
             filteredMenu.map((item) => {
-              const cartItem = cart.find((c) => c.id === item.id);
-              const isSoldOut = !item.isAvailable || (item.trackStock && item.stockQuantity <= 0);
+              const itemId = item._id || item.id;
+              const cartItem = cart.find((c) => (c._id === itemId || c.id === itemId));
+              const stockLimit = item.currentStock !== undefined ? item.currentStock : item.stockQuantity;
+              const isSoldOut = !item.isAvailable || (item.trackStock && stockLimit <= 0);
 
               return (
-                <div key={item.id} style={{ backgroundColor: '#ffffff', borderRadius: '18px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)', border: '1px solid #efeff4', height: '88px', opacity: isSoldOut ? 0.7 : 1 }}>
+                <div key={itemId} style={{ backgroundColor: '#ffffff', borderRadius: '18px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)', border: '1px solid #efeff4', height: '88px', opacity: isSoldOut ? 0.7 : 1 }}>
                   
                   <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexGrow: 1, overflow: 'hidden', height: '100%' }}>
                     {item.img ? (
@@ -305,10 +363,10 @@ export default function ScanMenu() {
                           padding: '2px 6px',
                           borderRadius: '4px',
                           width: 'fit-content',
-                          backgroundColor: isSoldOut ? '#fee2e2' : item.stockQuantity <= 5 ? '#ffedd5' : '#dcfce7',
-                          color: isSoldOut ? '#b91c1c' : item.stockQuantity <= 5 ? '#c2410c' : '#15803d'
+                          backgroundColor: isSoldOut ? '#fee2e2' : stockLimit <= 5 ? '#ffedd5' : '#dcfce7',
+                          color: isSoldOut ? '#b91c1c' : stockLimit <= 5 ? '#c2410c' : '#15803d'
                         }}>
-                          {isSoldOut ? 'SOLD OUT' : item.stockQuantity <= 5 ? `ONLY ${item.stockQuantity} LEFT!` : `STOCK: ${item.stockQuantity}`}
+                          {isSoldOut ? 'SOLD OUT' : stockLimit <= 5 ? `ONLY ${stockLimit} LEFT!` : `STOCK: ${stockLimit}`}
                         </span>
                       )}
                     </div>
@@ -322,11 +380,11 @@ export default function ScanMenu() {
                       </span>
                     ) : cartItem ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '14px', backgroundColor: '#2b7a43', color: '#ffffff', borderRadius: '20px', padding: '6px 14px', boxShadow: '0 4px 8px rgba(43,122,67,0.25)' }}>
-                        <button onClick={() => removeFromCart(item.id)} style={{ background: 'none', border: 'none', color: '#ffffff', fontSize: '18px', fontWeight: 'bold', cursor: 'pointer' }}>-</button>
+                        <button onClick={() => removeFromCart(itemId)} style={{ background: 'none', border: 'none', color: '#ffffff', fontSize: '18px', fontWeight: 'bold', cursor: 'pointer' }}>-</button>
                         <span style={{ fontWeight: '700', fontSize: '15px', minWidth: '12px', textAlign: 'center' }}>{cartItem.quantity}</span>
                         <button 
                           onClick={() => addToCart(item)} 
-                          style={{ background: 'none', border: 'none', color: '#ffffff', fontSize: '18px', fontWeight: 'bold', cursor: item.trackStock && cartItem.quantity >= item.stockQuantity ? 'not-allowed' : 'pointer', opacity: item.trackStock && cartItem.quantity >= item.stockQuantity ? 0.4 : 1 }}
+                          style={{ background: 'none', border: 'none', color: '#ffffff', fontSize: '18px', fontWeight: 'bold', cursor: item.trackStock && cartItem.quantity >= stockLimit ? 'not-allowed' : 'pointer', opacity: item.trackStock && cartItem.quantity >= stockLimit ? 0.4 : 1 }}
                         >+</button>
                       </div>
                     ) : (
@@ -359,7 +417,8 @@ export default function ScanMenu() {
             width: '100%', 
             maxWidth: '420px',
             padding: '0 16px',
-            zIndex: 99 
+            zIndex: 99,
+            boxSizing: 'border-box'
           }}>
             <div style={{ 
               width: '100%', 
@@ -370,7 +429,8 @@ export default function ScanMenu() {
               display: 'flex', 
               justifyContent: 'space-between', 
               alignItems: 'center', 
-              boxShadow: '0 10px 25px rgba(43,122,67,0.35)' 
+              boxShadow: '0 10px 25px rgba(43,122,67,0.35)',
+              boxSizing: 'border-box'
             }}>
               <div style={{ textAlign: 'left' }}>
                 <span style={{ fontSize: '10px', display: 'block', opacity: 0.8, textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px' }}>{totalItemsCount} ITEMS ADDED</span>
@@ -401,6 +461,7 @@ export default function ScanMenu() {
           </div>
         )}
 
+        {/* Checkout Details Modal */}
         {showCheckoutModal && (
           <div
             style={{
@@ -511,6 +572,7 @@ export default function ScanMenu() {
           </div>
         )}
 
+        {/* Success Modal */}
         {showSuccessModal && (
           <div
             style={{

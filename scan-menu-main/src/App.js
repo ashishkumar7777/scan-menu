@@ -7,6 +7,7 @@ import OrderHistory from './components/OrderHistory';
 import InventoryManager from './components/InventoryManager';
 import SalesReport from './components/SalesReport';
 import TableQRGenerator from './components/TableQRGenerator';
+import TableManagement from './components/TableManagement';
 
 function NavigationBar() {
   const location = useLocation();
@@ -39,16 +40,18 @@ function NavigationBar() {
         🖥️ POS Billing Console
       </Link>
 
+      <Link to="/tables" style={getLinkStyle('/tables', '#059669')}>
+        🍽️ Live Tables
+      </Link>
+
       <Link to="/inventory" style={getLinkStyle('/inventory', '#d97706')}>
         📦 Stock Inventory
       </Link>
       
-      {/* Dedicated Kitchen Display Screen */}
       <Link to="/kds" style={getLinkStyle('/kds', '#16a34a')}>
         🍳 Kitchen KDS
       </Link>
 
-      {/* Dedicated Order Details & History Screen */}
       <Link to="/history" style={getLinkStyle('/history', '#0284c7')}>
         📑 Order History
       </Link>
@@ -57,7 +60,6 @@ function NavigationBar() {
         📊 Sales Reports
       </Link>
 
-      {/* Table QR Standee Studio */}
       <Link to="/table-qrs" style={getLinkStyle('/table-qrs', '#ea580c')}>
         🪑 Table QRs
       </Link>
@@ -69,25 +71,21 @@ export default function App() {
   return (
     <Router>
       <div>
-        {/* Navigation Switch Bar */}
         <NavigationBar />
 
-        {/* Routes */}
         <Routes>
           <Route path="/" element={<ScanMenu />} />
           <Route path="/menu" element={<ScanMenu />} />
           <Route path="/scan/:cafeId" element={<ScanMenu />} />
           <Route path="/pos" element={<PosBilling />} />
+          <Route path="/tables" element={<TableManagement />} />
           <Route path="/inventory" element={<InventoryManager />} />
           
-          {/* Separated Routes for KDS and Order History */}
           <Route path="/kds" element={<KitchenKDS />} />
           <Route path="/orders" element={<KitchenKDS />} />
           <Route path="/history" element={<OrderHistory />} />
 
           <Route path="/reports" element={<SalesReport />} />
-          
-          {/* Table QR Generator Route */}
           <Route path="/table-qrs" element={<TableQRGenerator />} />
         </Routes>
       </div>

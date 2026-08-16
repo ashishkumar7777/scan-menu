@@ -34,10 +34,12 @@ const orderRoutes = require('./routes/orderRoutes');
 const itemRoutes = require('./routes/itemRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
 const reportRoutes = require('./routes/reports');
+const tableRoutes = require('./routes/tableRoutes');
 
 app.use('/api/items', itemRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/tables', tableRoutes);
 
 // Mount Order routes to all possible endpoints used by QR / POS
 app.use('/api/orders', orderRoutes);

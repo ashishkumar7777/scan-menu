@@ -174,7 +174,7 @@ export default function KitchenKDS() {
     const orderIdStr = ord.orderId ? String(ord.orderId) : '';
     const primaryKey = mongoId || orderIdStr;
 
-    // 1. Immediately track as dismissed
+    // 1. Immediately track as dismissed from KDS screen
     if (mongoId) dismissedIdsRef.current.add(mongoId);
     if (orderIdStr) dismissedIdsRef.current.add(orderIdStr);
 
@@ -187,11 +187,11 @@ export default function KitchenKDS() {
       })
     );
 
-    // 3. Update Database
+    // 3. Update Database status to SERVED (leaves KDS, keeps table in Yellow/Served state)
     try {
-      await axios.post(`${API_BASE_URL}/api/orders/${primaryKey}/status`, { status: 'COMPLETED' })
-        .catch(() => axios.patch(`${API_BASE_URL}/api/orders/${primaryKey}/status`, { status: 'COMPLETED' }))
-        .catch(() => axios.post(`${API_BASE_URL}/api/orders/update-status`, { id: primaryKey, status: 'COMPLETED' }));
+      await axios.post(`${API_BASE_URL}/api/orders/${primaryKey}/status`, { status: 'SERVED' })
+        .catch(() => axios.patch(`${API_BASE_URL}/api/orders/${primaryKey}/status`, { status: 'SERVED' }))
+        .catch(() => axios.post(`${API_BASE_URL}/api/orders/update-status`, { id: primaryKey, status: 'SERVED' }));
     } catch (err) {
       console.error('Failed to persist status to backend:', err);
     }

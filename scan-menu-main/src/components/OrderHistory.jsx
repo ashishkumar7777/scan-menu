@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import ThermalPrintReceipt from './ThermalPrintReceipt';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -12,6 +13,8 @@ export default function OrderHistory() {
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ totalOrders: 0, totalPages: 1, currentPage: 1 });
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [activePrintOrder, setActivePrintOrder] = useState(null);
+  const [printType, setPrintType] = useState('BILL'); // 'BILL' | 'KOT'
 
   const fetchHistory = useCallback(async () => {
     setLoading(true);
@@ -46,9 +49,20 @@ export default function OrderHistory() {
     fetchHistory();
   };
 
+  const triggerThermalPrint = (order, type = 'BILL') => {
+    setActivePrintOrder(order);
+    setPrintType(type);
+    setTimeout(() => {
+      window.print();
+    }, 120);
+  };
+
   return (
     <div style={{ padding: '24px', background: '#f8fafc', minHeight: 'calc(100vh - 60px)', fontFamily: 'system-ui, sans-serif' }}>
       
+      {/* Hidden Thermal Print Element */}
+      <ThermalPrintReceipt order={activePrintOrder} type={printType} />
+
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
@@ -132,7 +146,7 @@ export default function OrderHistory() {
               <th style={{ padding: '14px 16px' }}>Payment</th>
               <th style={{ padding: '14px 16px' }}>Status</th>
               <th style={{ padding: '14px 16px', textAlign: 'right' }}>Amount</th>
-              <th style={{ padding: '14px 16px', textAlign: 'center' }}>Invoice</th>
+              <th style={{ padding: '14px 16px', textAlign: 'center' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -160,12 +174,21 @@ export default function OrderHistory() {
                     </td>
                     <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: '700', color: '#16a34a' }}>₹{ord.grandTotal || ord.subTotal || 0}</td>
                     <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                      <button
-                        onClick={() => setSelectedOrder(ord)}
-                        style={{ padding: '6px 12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
-                      >
-                        View
-                      </button>
+                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                        <button
+                          onClick={() => setSelectedOrder(ord)}
+                          style={{ padding: '6px 10px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
+                        >
+                          View
+                        </button>
+                        <button
+                          onClick={() => triggerThermalPrint(ord, 'BILL')}
+                          title="Print Thermal Customer Invoice"
+                          style={{ padding: '6px 10px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
+                        >
+                          🧾 Print
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -202,20 +225,22 @@ export default function OrderHistory() {
         </div>
       )}
 
-      {/* Details Modal */}
+      {/* Invoice Modal */}
       {selectedOrder && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }}>
-          <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '420px', boxShadow: '0 20px 25px rgba(0,0,0,0.15)' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '440px', boxShadow: '0 20px 25px rgba(0,0,0,0.15)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ margin: 0, color: '#0f172a' }}>Invoice #{selectedOrder.orderId}</h3>
               <button onClick={() => setSelectedOrder(null)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}>✕</button>
             </div>
+            
             <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               <div><strong>Channel:</strong> {selectedOrder.orderType || 'Takeaway'}</div>
               <div><strong>Table:</strong> {selectedOrder.tableNo || 'N/A'}</div>
               <div><strong>Customer:</strong> {selectedOrder.customerName || 'Guest'}</div>
               <div><strong>Payment:</strong> {selectedOrder.paymentMethod || 'CASH'}</div>
             </div>
+
             <h4 style={{ margin: '0 0 10px 0', fontSize: '14px' }}>Items</h4>
             <div style={{ maxHeight: '180px', overflowY: 'auto', marginBottom: '16px' }}>
               {selectedOrder.items?.map((it, idx) => (
@@ -225,11 +250,28 @@ export default function OrderHistory() {
                 </div>
               ))}
             </div>
+
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: 'bold', paddingTop: '10px', borderTop: '2px solid #e2e8f0', marginBottom: '16px' }}>
               <span>Total:</span>
               <span style={{ color: '#16a34a' }}>₹{selectedOrder.grandTotal || selectedOrder.subTotal || 0}</span>
             </div>
-            <button onClick={() => setSelectedOrder(null)} style={{ width: '100%', padding: '10px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Close</button>
+
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+              <button 
+                onClick={() => triggerThermalPrint(selectedOrder, 'KOT')}
+                style={{ flex: 1, padding: '10px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+              >
+                🖨️ Print KOT
+              </button>
+              <button 
+                onClick={() => triggerThermalPrint(selectedOrder, 'BILL')}
+                style={{ flex: 1, padding: '10px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+              >
+                🧾 Print Receipt
+              </button>
+            </div>
+
+            <button onClick={() => setSelectedOrder(null)} style={{ width: '100%', padding: '10px', background: '#e2e8f0', color: '#334155', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Close</button>
           </div>
         </div>
       )}

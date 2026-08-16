@@ -6,6 +6,7 @@ import KitchenKDS from './components/KitchenKDS';
 import OrderHistory from './components/OrderHistory';
 import InventoryManager from './components/InventoryManager';
 import SalesReport from './components/SalesReport';
+import TableQRGenerator from './components/TableQRGenerator';
 
 function NavigationBar() {
   const location = useLocation();
@@ -55,6 +56,11 @@ function NavigationBar() {
       <Link to="/reports" style={getLinkStyle('/reports', '#8b5cf6')}>
         📊 Sales Reports
       </Link>
+
+      {/* Table QR Standee Studio */}
+      <Link to="/table-qrs" style={getLinkStyle('/table-qrs', '#ea580c')}>
+        🪑 Table QRs
+      </Link>
     </nav>
   );
 }
@@ -70,6 +76,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<ScanMenu />} />
           <Route path="/menu" element={<ScanMenu />} />
+          <Route path="/scan/:cafeId" element={<ScanMenu />} />
           <Route path="/pos" element={<PosBilling />} />
           <Route path="/inventory" element={<InventoryManager />} />
           
@@ -79,6 +86,9 @@ export default function App() {
           <Route path="/history" element={<OrderHistory />} />
 
           <Route path="/reports" element={<SalesReport />} />
+          
+          {/* Table QR Generator Route */}
+          <Route path="/table-qrs" element={<TableQRGenerator />} />
         </Routes>
       </div>
     </Router>

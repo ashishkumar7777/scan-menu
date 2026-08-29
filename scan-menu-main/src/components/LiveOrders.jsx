@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = 'http://localhost:5000';
-const API_URL = 'http://localhost:5000/api/orders';
+const SOCKET_URL = 'https://resto-backend-rete.onrender.com';
+const API_URL = 'https://resto-backend-rete.onrender.com/api/orders';
 
 const normalizeWhatsAppPhone = (phone) => {
   const digits = String(phone || '').replace(/\D/g, '');

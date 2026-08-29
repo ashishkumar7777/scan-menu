@@ -3,7 +3,7 @@ import axios from 'axios';
 import { io } from 'socket.io-client';
 import ThermalPrintReceipt from './ThermalPrintReceipt';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://resto-backend-rete.onrender.com';
 
 // Web Audio API Sound Chime for New Kitchen Orders
 const playKitchenChime = () => {

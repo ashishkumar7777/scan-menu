@@ -63,20 +63,22 @@ function ElapsedTimer({ createdAt }) {
   }, [createdAt]);
 
   // Determine Urgency Styles
-  let badgeBg = '#334155';
-  let badgeColor = '#94a3b8';
-  let isPulsing = false;
+  let badgeBg = '#f1f5f9';
+  let badgeColor = '#475569';
+  let borderColor = '#e2e8f0';
 
   if (elapsedMinutes >= 15) {
-    badgeBg = '#ef4444';
-    badgeColor = '#ffffff';
-    isPulsing = true;
+    badgeBg = '#fee2e2';
+    badgeColor = '#dc2626';
+    borderColor = '#fca5a5';
   } else if (elapsedMinutes >= 10) {
-    badgeBg = '#f59e0b';
-    badgeColor = '#000000';
+    badgeBg = '#fef3c7';
+    badgeColor = '#d97706';
+    borderColor = '#fcd34d';
   } else if (elapsedMinutes >= 5) {
-    badgeBg = '#0284c7';
-    badgeColor = '#ffffff';
+    badgeBg = '#e0f2fe';
+    badgeColor = '#0284c7';
+    borderColor = '#bae6fd';
   }
 
   const formattedSec = String(elapsedSeconds).padStart(2, '0');
@@ -87,13 +89,13 @@ function ElapsedTimer({ createdAt }) {
         display: 'inline-flex',
         alignItems: 'center',
         gap: '4px',
-        fontSize: '12px',
+        fontSize: '11px',
         fontWeight: '800',
         padding: '3px 8px',
-        borderRadius: '6px',
+        borderRadius: '9999px',
         backgroundColor: badgeBg,
         color: badgeColor,
-        boxShadow: isPulsing ? '0 0 10px rgba(239, 68, 68, 0.8)' : 'none',
+        border: `1px solid ${borderColor}`,
         transition: 'all 0.3s ease',
       }}
     >
@@ -215,23 +217,75 @@ export default function KitchenKDS() {
   };
 
   return (
-    <div style={{ padding: '24px', background: '#0f172a', minHeight: 'calc(100vh - 60px)', color: '#f8fafc', fontFamily: 'system-ui, sans-serif' }}>
-      
+    <div
+      style={{
+        padding: '24px 28px',
+        background: '#f8fafc',
+        minHeight: 'calc(100vh - 64px)',
+        color: '#0f172a',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        boxSizing: 'border-box'
+      }}
+    >
       {/* Hidden Thermal Receipt Render Area */}
       <ThermalPrintReceipt order={printOrder} type="KOT" />
 
       {/* KDS Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <h2 style={{ margin: '0 0 4px 0', fontSize: '24px', color: '#38bdf8' }}>🍳 Live Kitchen Display (KDS)</h2>
-          <p style={{ margin: 0, color: '#94a3b8', fontSize: '14px' }}>Active orders queue in preparation</p>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '24px',
+          flexWrap: 'wrap',
+          gap: '14px'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div
+            style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '12px',
+              background: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '20px',
+              border: '1px solid #e2e8f0',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
+            }}
+          >
+            🍳
+          </div>
+          <div>
+            <h1 style={{ fontSize: '20px', fontWeight: '900', color: '#0f172a', margin: 0, letterSpacing: '-0.4px' }}>
+              Live Kitchen Display (KDS)
+            </h1>
+            <p style={{ margin: '2px 0 0 0', fontSize: '13px', color: '#64748b' }}>
+              Active orders queue in preparation
+            </p>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {orders.length > 0 && (
             <button
               onClick={clearAllPending}
-              style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
+              style={{
+                background: '#fee2e2',
+                color: '#b91c1c',
+                border: '1px solid #fecaca',
+                padding: '8px 16px',
+                borderRadius: '9999px',
+                cursor: 'pointer',
+                fontWeight: '800',
+                fontSize: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease'
+              }}
             >
               🗑️ Clear All ({orders.length})
             </button>
@@ -239,114 +293,255 @@ export default function KitchenKDS() {
 
           <button 
             onClick={() => fetchLiveOrders(false)} 
-            style={{ background: '#1e293b', border: '1px solid #334155', color: '#fff', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
+            style={{
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              color: '#0f172a',
+              padding: '8px 16px',
+              borderRadius: '9999px',
+              cursor: 'pointer',
+              fontWeight: '800',
+              fontSize: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+            }}
           >
             🔄 Refresh
           </button>
 
-          <div style={{ background: '#1e293b', padding: '8px 16px', borderRadius: '8px', fontWeight: 'bold', fontSize: '14px', border: '1px solid #334155' }}>
-            Pending Orders: <span style={{ color: '#f59e0b' }}>{orders.length}</span>
+          <div
+            style={{
+              background: '#0f172a',
+              color: '#ffffff',
+              padding: '8px 18px',
+              borderRadius: '9999px',
+              fontWeight: '800',
+              fontSize: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              boxShadow: '0 4px 12px rgba(15,23,42,0.15)'
+            }}
+          >
+            <span>Pending Orders:</span>
+            <span
+              style={{
+                background: '#a3e635',
+                color: '#0f172a',
+                padding: '2px 8px',
+                borderRadius: '9999px',
+                fontSize: '11px',
+                fontWeight: '900'
+              }}
+            >
+              {orders.length}
+            </span>
           </div>
         </div>
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '50px', color: '#94a3b8' }}>Syncing Kitchen Feed...</div>
+        <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>
+          Syncing Kitchen Feed...
+        </div>
       ) : orders.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '80px 20px', background: '#1e293b', borderRadius: '16px', border: '2px dashed #334155' }}>
-          <div style={{ fontSize: '50px', marginBottom: '10px' }}>👨‍🍳</div>
-          <h3 style={{ margin: '0 0 6px 0', color: '#38bdf8' }}>All Orders Prepared!</h3>
-          <p style={{ margin: 0, color: '#94a3b8' }}>Waiting for new customer orders from POS or QR Menu...</p>
+        <div
+          style={{
+            textAlign: 'center',
+            padding: '80px 20px',
+            background: '#ffffff',
+            borderRadius: '24px',
+            border: '1px dashed #cbd5e1',
+            maxWidth: '520px',
+            margin: '40px auto'
+          }}
+        >
+          <div style={{ fontSize: '48px', marginBottom: '12px' }}>👨‍🍳</div>
+          <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: '0 0 6px 0' }}>
+            All Orders Prepared!
+          </h3>
+          <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>
+            Waiting for new customer orders from POS or QR Menu...
+          </p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))', gap: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 320px))', gap: '18px', alignItems: 'start' }}>
           {orders.map((ord) => {
             const cardKey = ord._id || ord.orderId;
             const isQR = ord.source === 'QR_MENU' || (ord.orderId || '').startsWith('ORD') || (ord.orderId || '').startsWith('QR');
+            const orderType = (ord.orderType || 'TAKEAWAY').toUpperCase();
+            const orderItems = ord.items || ord.orderItems || ord.cartItems || [];
 
             return (
               <div
                 key={cardKey}
                 style={{
-                  background: '#1e293b',
-                  borderRadius: '14px',
-                  border: '1px solid #334155',
+                  background: '#ffffff',
+                  borderRadius: '22px',
+                  border: '1px solid #e2e8f0',
+                  boxShadow: '0 6px 16px -4px rgba(0, 0, 0, 0.04)',
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'space-between',
+                  minHeight: '260px',
                   overflow: 'hidden',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                  boxSizing: 'border-box'
                 }}
               >
                 {/* Card Top Header */}
-                <div style={{ padding: '14px 16px', borderBottom: '1px solid #334155', background: '#182234', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <h3 style={{ margin: 0, color: '#f8fafc', fontSize: '17px', fontWeight: '800' }}>
-                        {ord.orderId}
-                      </h3>
-                      {ord.tokenNumber && (
-                        <span style={{ fontSize: '11px', color: '#38bdf8', background: '#0c4a6e', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
-                          #{ord.tokenNumber}
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '13px', marginTop: '4px' }}>
-                      {ord.tableNo ? `📍 Table #${ord.tableNo}` : ord.orderType || 'TAKEAWAY'}
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
-                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                      <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', background: isQR ? '#312e81' : '#78350f', color: isQR ? '#a5b4fc' : '#fde68a' }}>
-                        {isQR ? 'QR' : 'POS'}
-                      </span>
-                      <button
-                        onClick={() => handlePrintKOT(ord)}
-                        title="Print KOT Ticket"
-                        style={{ background: '#334155', border: 'none', color: '#f8fafc', padding: '3px 7px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                <div style={{ padding: '16px 18px', borderBottom: '1px solid #f1f5f9', background: '#ffffff' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                        <h3 style={{ margin: 0, color: '#0f172a', fontSize: '16px', fontWeight: '900', letterSpacing: '-0.3px' }}>
+                          {ord.orderId || `#${String(cardKey).slice(-6).toUpperCase()}`}
+                        </h3>
+                        {ord.tokenNumber && (
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: '800',
+                              padding: '2px 8px',
+                              borderRadius: '9999px',
+                              background: '#eff6ff',
+                              color: '#2563eb',
+                              border: '1px solid #bfdbfe'
+                            }}
+                          >
+                            #{ord.tokenNumber}
+                          </span>
+                        )}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: '800',
+                          color: orderType === 'TAKEAWAY' ? '#d97706' : orderType === 'DELIVERY' ? '#9333ea' : '#16a34a',
+                          letterSpacing: '0.4px',
+                          textTransform: 'uppercase'
+                        }}
                       >
-                        🖨️ KOT
-                      </button>
+                        {ord.tableNo ? `📍 Table #${ord.tableNo}` : ord.orderType || 'TAKEAWAY'}
+                      </div>
                     </div>
 
-                    {/* Live Timer Indicator */}
-                    <ElapsedTimer createdAt={ord.createdAt || new Date()} />
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <span
+                          style={{
+                            fontSize: '10px',
+                            fontWeight: '800',
+                            padding: '2px 6px',
+                            borderRadius: '6px',
+                            background: isQR ? '#faf5ff' : '#f1f5f9',
+                            color: isQR ? '#7e22ce' : '#334155',
+                            border: '1px solid #e2e8f0'
+                          }}
+                        >
+                          {isQR ? 'QR' : 'POS'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handlePrintKOT(ord)}
+                          title="Print KOT Ticket"
+                          style={{
+                            background: '#f8fafc',
+                            border: '1px solid #e2e8f0',
+                            color: '#0f172a',
+                            padding: '2px 6px',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            fontSize: '10px',
+                            fontWeight: '800'
+                          }}
+                        >
+                          🖨️ KOT
+                        </button>
+                      </div>
+
+                      {/* Live Timer Indicator */}
+                      <ElapsedTimer createdAt={ord.createdAt || new Date()} />
+                    </div>
                   </div>
                 </div>
 
                 {/* Items List */}
-                <div style={{ padding: '16px', flex: 1, minHeight: '120px' }}>
-                  {ord.items?.map((item, idx) => (
-                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontSize: '15px', borderBottom: '1px dashed #334155', paddingBottom: '6px' }}>
-                      <span style={{ color: '#f1f5f9' }}>
-                        <strong style={{ color: '#38bdf8', fontSize: '17px', marginRight: '6px' }}>
-                          {item.quantity || 1}x
-                        </strong>
-                        {item.name}
-                      </span>
+                <div style={{ padding: '16px 18px', flex: 1, minHeight: '120px' }}>
+                  {orderItems.length === 0 ? (
+                    <div style={{ color: '#94a3b8', fontSize: '13px', fontStyle: 'italic' }}>
+                      No items recorded on this ticket.
                     </div>
-                  ))}
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {orderItems.map((item, idx) => {
+                        const itemName = item.name || item.title || item.itemName || item.itemId?.name || 'Item';
+                        const itemQty = item.quantity || item.qty || 1;
+
+                        return (
+                          <div
+                            key={idx}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              fontSize: '14px',
+                              borderBottom: idx === orderItems.length - 1 ? 'none' : '1px dashed #f1f5f9',
+                              paddingBottom: '6px'
+                            }}
+                          >
+                            <span style={{ fontWeight: '700', color: '#0f172a' }}>
+                              {itemName}
+                            </span>
+                            <span
+                              style={{
+                                fontWeight: '900',
+                                color: '#16a34a',
+                                background: '#dcfce7',
+                                padding: '2px 8px',
+                                borderRadius: '9999px',
+                                fontSize: '12px'
+                              }}
+                            >
+                              {itemQty}x
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* Card Action */}
-                <div style={{ padding: '14px', background: '#0f172a' }}>
+                <div style={{ padding: '14px 18px', background: '#ffffff', borderTop: '1px solid #f1f5f9' }}>
                   <button
+                    type="button"
                     onClick={() => markCompleted(ord)}
                     style={{
                       width: '100%',
                       padding: '12px',
-                      background: '#16a34a',
-                      color: '#fff',
+                      background: '#0f172a',
+                      color: '#ffffff',
                       border: 'none',
-                      borderRadius: '8px',
-                      fontWeight: 'bold',
-                      fontSize: '14px',
+                      borderRadius: '9999px',
+                      fontWeight: '800',
+                      fontSize: '13px',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      gap: '6px'
+                      gap: '6px',
+                      boxShadow: '0 4px 12px rgba(240, 240, 240, 0.15)',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'rgb(163, 230, 53)';
+                      e.currentTarget.style.color = 'rgb(22, 22, 22)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#0f172a';
+                      e.currentTarget.style.color = 'rgb(243, 239, 239)';
                     }}
                   >
                     ✓ Mark as Done & Serve

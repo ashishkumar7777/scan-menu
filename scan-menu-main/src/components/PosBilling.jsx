@@ -26,6 +26,7 @@ export default function PosBilling() {
   const [tableNo, setTableNo] = useState('');
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [mobileCartOpen, setMobileCartOpen] = useState(false);
 
   const fetchAllData = useCallback(async () => {
     try {
@@ -143,6 +144,8 @@ export default function PosBilling() {
     0
   );
 
+  const totalCartQty = cart.reduce((sum, item) => sum + item.quantity, 0);
+
   const handleCreateOrder = async () => {
     if (cart.length === 0) return;
     if (orderType === 'DINE_IN' && !tableNo.trim()) {
@@ -179,6 +182,7 @@ export default function PosBilling() {
         alert(`🎉 POS Order #${generatedOrderId} Placed Successfully!`);
         setCart([]);
         setTableNo('');
+        setMobileCartOpen(false);
         fetchAllData();
       }
     } catch (error) {
@@ -189,246 +193,220 @@ export default function PosBilling() {
     }
   };
 
-  return (
+  const renderCartConsole = () => (
     <div
       style={{
-        display: 'flex',
-        gap: '24px',
-        padding: '24px',
-        background: '#f8fafc',
-        minHeight: 'calc(100vh - 64px)',
+        background: '#ffffff',
+        borderRadius: '24px',
+        padding: '18px 16px',
+        color: '#0f172a',
         fontFamily: 'system-ui, -apple-system, sans-serif',
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 10px 30px -5px rgba(0, 0, 0, 0.05)',
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
         boxSizing: 'border-box',
+        overflow: 'hidden',
       }}
     >
-      {/* Left Column: Menu Catalog (White Theme) */}
-      <div style={{ flex: 1.8 }}>
-        {/* Header Title */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div
-              style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '12px',
-                background: '#ffffff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '18px',
-                border: '1px solid #e2e8f0',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
-              }}
-            >
-              💻
+      {/* Top Fixed Area */}
+      <div style={{ flexShrink: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <div>
+            <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+              Invoice Details
+            </span>
+            <h3 style={{ margin: '2px 0 0 0', fontSize: '17px', fontWeight: '900', color: '#0f172a' }}>
+              {orderType === 'DINE_IN' && tableNo ? `Table #${tableNo}` : 'Quick POS Bill'}
+            </h3>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', padding: '4px 10px', borderRadius: '9999px', border: '1px solid #e2e8f0' }}>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#16a34a' }} />
+              <span style={{ fontSize: '11px', fontWeight: '800', color: '#0f172a' }}>Active Draft</span>
             </div>
-            <div>
-              <h2 style={{ fontSize: '18px', fontWeight: '900', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
-                FastPOS Counter Console
-              </h2>
-              <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
-                Tap item to add to bill • Total {filteredItems.length} items available
-              </p>
-            </div>
+            {cart.length > 0 && (
+              <button
+                type="button"
+                onClick={clearCart}
+                style={{
+                  background: '#fee2e2',
+                  border: 'none',
+                  color: '#ef4444',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: '800',
+                  borderRadius: '9999px',
+                  padding: '4px 10px',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Clear
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Category Filter Pills (Light Container) */}
+        {/* Order Channel Selector */}
         <div
           style={{
-            display: 'inline-flex',
-            alignItems: 'center',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
             gap: '6px',
-            background: '#ffffff',
-            padding: '5px 6px',
+            background: '#f1f5f9',
+            padding: '4px',
             borderRadius: '9999px',
-            border: '1px solid #e2e8f0',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-            marginBottom: '20px',
-            flexWrap: 'wrap',
+            marginBottom: '10px',
           }}
         >
-          <button
-            type="button"
-            onClick={() => setActiveCategory('all')}
-            style={{
-              padding: '7px 18px',
-              borderRadius: '9999px',
-              border: 'none',
-              background: activeCategory === 'all' ? '#0f172a' : 'transparent',
-              color: activeCategory === 'all' ? '#ffffff' : '#64748b',
-              cursor: 'pointer',
-              fontWeight: '800',
-              fontSize: '13px',
-              boxShadow: activeCategory === 'all' ? '0 4px 12px rgba(15,23,42,0.18)' : 'none',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            All Items
-          </button>
-          {categories.map((cat) => {
-            const catKey = cat.slug || cat.id || cat.name;
-            const isCatActive = activeCategory === catKey;
+          {ORDER_TYPES.map((channel) => {
+            const isSelected = orderType === channel.id;
             return (
               <button
-                key={catKey}
+                key={channel.id}
                 type="button"
-                onClick={() => setActiveCategory(catKey)}
+                onClick={() => setOrderType(channel.id)}
                 style={{
-                  padding: '7px 18px',
+                  padding: '6px 0',
                   borderRadius: '9999px',
                   border: 'none',
-                  background: isCatActive ? '#0f172a' : 'transparent',
-                  color: isCatActive ? '#ffffff' : '#64748b',
-                  cursor: 'pointer',
+                  background: isSelected ? '#0f172a' : 'transparent',
+                  color: isSelected ? '#ffffff' : '#64748b',
+                  fontSize: '11px',
                   fontWeight: '800',
-                  fontSize: '13px',
-                  textTransform: 'capitalize',
-                  boxShadow: isCatActive ? '0 4px 12px rgba(15,23,42,0.18)' : 'none',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
                   transition: 'all 0.15s ease',
+                  boxShadow: isSelected ? '0 2px 8px rgba(15,23,42,0.15)' : 'none',
                 }}
               >
-                {cat.name}
+                {channel.label}
               </button>
             );
           })}
         </div>
 
-        {/* Item Cards Grid (Clean White Cards) */}
-        {loading ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
-            Connecting to database...
+        {orderType === 'DINE_IN' && (
+          <div style={{ marginBottom: '10px' }}>
+            <input
+              type="text"
+              placeholder="Enter Table Number (e.g. 7)"
+              value={tableNo}
+              onChange={(e) => setTableNo(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                borderRadius: '10px',
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                color: '#0f172a',
+                boxSizing: 'border-box',
+                fontSize: '12px',
+                fontWeight: '600',
+                fontFamily: 'inherit',
+              }}
+            />
           </div>
-        ) : (
+        )}
+      </div>
+
+      {/* Middle Scrollable Area for Cart Items */}
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          paddingRight: '2px',
+          margin: '4px 0 10px 0',
+        }}
+      >
+        {cart.length === 0 ? (
           <div
             style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))',
-              gap: '14px',
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '20px 10px',
+              background: '#f8fafc',
+              borderRadius: '16px',
+              border: '1px dashed #e2e8f0',
+              boxSizing: 'border-box',
             }}
           >
-            {filteredItems.map((item) => {
-              const itemId = item._id || item.id;
-              const stockCount = item.currentStock !== undefined ? item.currentStock : item.stockQuantity;
-              const isDisabled = !item.isAvailable || (stockCount !== undefined && stockCount <= 0);
-
+            <div style={{ fontSize: '24px', marginBottom: '4px' }}>🛒</div>
+            <p style={{ margin: 0, fontSize: '12px', color: '#64748b', fontWeight: '600' }}>
+              Cart is empty. Tap items to add.
+            </p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {cart.map((item) => {
+              const cartItemId = item._id || item.id;
               return (
                 <div
-                  key={itemId}
-                  onClick={() => addToCart(item)}
+                  key={cartItemId}
                   style={{
-                    background: isDisabled ? '#f8fafc' : '#ffffff',
+                    background: '#f8fafc',
                     border: '1px solid #e2e8f0',
-                    borderRadius: '20px',
-                    padding: '16px',
-                    opacity: isDisabled ? 0.6 : 1,
-                    cursor: isDisabled ? 'not-allowed' : 'pointer',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+                    borderRadius: '12px',
+                    padding: '8px 10px',
                     display: 'flex',
-                    flexDirection: 'column',
+                    alignItems: 'center',
                     justifyContent: 'space-between',
-                    minHeight: '130px',
-                    position: 'relative',
-                    transition: 'all 0.15s ease',
-                    boxSizing: 'border-box',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isDisabled) {
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                      e.currentTarget.style.boxShadow = '0 8px 18px rgba(0,0,0,0.06)';
-                      e.currentTarget.style.borderColor = '#cbd5e1';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isDisabled) {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.03)';
-                      e.currentTarget.style.borderColor = '#e2e8f0';
-                    }
                   }}
                 >
-                  {/* Name & Price */}
-                  <div>
-                    <h4
-                      style={{
-                        margin: '0 0 4px 0',
-                        fontSize: '15px',
-                        fontWeight: '800',
-                        color: '#0f172a',
-                        letterSpacing: '-0.2px',
-                        lineHeight: '1.3',
-                      }}
-                    >
+                  <div style={{ flex: 1, marginRight: '8px' }}>
+                    <h4 style={{ margin: '0 0 2px 0', fontSize: '12px', fontWeight: '800', color: '#0f172a', lineHeight: '1.2' }}>
                       {item.name}
                     </h4>
-                    <div
-                      style={{
-                        fontSize: '18px',
-                        fontWeight: '900',
-                        color: '#16a34a',
-                        letterSpacing: '-0.4px',
-                      }}
-                    >
-                      ₹{item.price}
-                    </div>
+                    <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: '800' }}>
+                      ₹{item.price} × {item.quantity}
+                    </span>
                   </div>
 
-                  {/* Stock Status & Quick Toggle */}
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      marginTop: '14px',
-                      paddingTop: '10px',
-                      borderTop: '1px solid #f1f5f9',
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: '10px',
-                        fontWeight: '800',
-                        letterSpacing: '0.4px',
-                        padding: '3px 9px',
-                        borderRadius: '9999px',
-                        backgroundColor: isDisabled ? '#fee2e2' : '#dcfce7',
-                        color: isDisabled ? '#b91c1c' : '#15803d',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                      }}
-                    >
-                      <span
-                        style={{
-                          width: '5px',
-                          height: '5px',
-                          borderRadius: '50%',
-                          background: isDisabled ? '#ef4444' : '#16a34a',
-                        }}
-                      />
-                      {!item.isAvailable
-                        ? 'DISABLED'
-                        : stockCount !== undefined && stockCount <= 0
-                        ? 'SOLD OUT'
-                        : 'IN STOCK'}
-                    </span>
-
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                     <button
                       type="button"
-                      onClick={(e) => toggleAvailability(e, itemId)}
+                      onClick={() => updateQuantity(cartItemId, -1)}
                       style={{
-                        fontSize: '11px',
-                        padding: '4px 10px',
-                        borderRadius: '9999px',
+                        width: '24px',
+                        height: '24px',
+                        borderRadius: '6px',
                         border: '1px solid #e2e8f0',
-                        fontWeight: '700',
-                        backgroundColor: item.isAvailable ? '#fef2f2' : '#f0fdf4',
-                        color: item.isAvailable ? '#ef4444' : '#16a34a',
+                        background: '#ffffff',
+                        color: '#0f172a',
+                        fontWeight: '900',
                         cursor: 'pointer',
-                        transition: 'background 0.15s ease',
+                        padding: 0,
+                        fontFamily: 'inherit',
                       }}
                     >
-                      {item.isAvailable ? 'Disable' : 'Enable'}
+                      -
+                    </button>
+                    <span style={{ fontSize: '12px', fontWeight: '800', minWidth: '14px', textAlign: 'center' }}>
+                      {item.quantity}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => updateQuantity(cartItemId, 1)}
+                      style={{
+                        width: '24px',
+                        height: '24px',
+                        borderRadius: '6px',
+                        border: '1px solid #e2e8f0',
+                        background: '#ffffff',
+                        color: '#0f172a',
+                        fontWeight: '900',
+                        cursor: 'pointer',
+                        padding: 0,
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      +
                     </button>
                   </div>
                 </div>
@@ -438,323 +416,415 @@ export default function PosBilling() {
         )}
       </div>
 
-      {/* Right Column: Clean White Bento Cart Console */}
-      <div
-        style={{
-          flex: 1.1,
-          maxWidth: '430px',
-          background: '#ffffff',
-          borderRadius: '26px',
-          padding: '22px 18px',
-          color: '#0f172a',
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 10px 30px -5px rgba(0, 0, 0, 0.05)',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          minHeight: '620px',
-          boxSizing: 'border-box',
-        }}
-      >
-        {/* Top Segment */}
-        <div>
-          {/* Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <div>
-              <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-                Invoice Details
-              </span>
-              <h3 style={{ margin: '2px 0 0 0', fontSize: '19px', fontWeight: '900', letterSpacing: '-0.4px', color: '#0f172a' }}>
-                {orderType === 'DINE_IN' && tableNo ? `Table #${tableNo}` : 'Quick POS Bill'}
-              </h3>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', padding: '5px 12px', borderRadius: '9999px', border: '1px solid #e2e8f0' }}>
-                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#16a34a' }} />
-                <span style={{ fontSize: '11px', fontWeight: '800', color: '#0f172a' }}>Active Draft</span>
-              </div>
-              {cart.length > 0 && (
+      {/* Bottom Fixed Checkout Area */}
+      <div style={{ flexShrink: 0 }}>
+        {/* Payment Selector */}
+        <div style={{ marginBottom: '10px' }}>
+          <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase', display: 'block', marginBottom: '5px' }}>
+            Payment Method
+          </span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+            {PAYMENT_METHODS.map((pm) => {
+              const isSelected = paymentMethod === pm.id;
+              return (
                 <button
+                  key={pm.id}
                   type="button"
-                  onClick={clearCart}
+                  onClick={() => setPaymentMethod(pm.id)}
                   style={{
-                    background: '#fee2e2',
-                    border: 'none',
-                    color: '#ef4444',
-                    cursor: 'pointer',
+                    padding: '7px 0',
+                    borderRadius: '10px',
+                    border: isSelected ? '1px solid #0f172a' : '1px solid #e2e8f0',
+                    background: isSelected ? '#0f172a' : '#f8fafc',
+                    color: isSelected ? '#ffffff' : '#64748b',
                     fontSize: '11px',
                     fontWeight: '800',
-                    borderRadius: '9999px',
-                    padding: '5px 12px',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
                   }}
                 >
-                  Clear
+                  {pm.label}
                 </button>
-              )}
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Totals Grid */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: '6px',
+            background: '#f8fafc',
+            padding: '8px 10px',
+            borderRadius: '12px',
+            border: '1px solid #e2e8f0',
+            marginBottom: '10px',
+          }}
+        >
+          <div>
+            <span style={{ fontSize: '9px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase' }}>Subtotal</span>
+            <div style={{ fontSize: '12px', fontWeight: '800', color: '#0f172a' }}>₹{subTotal}</div>
+          </div>
+          <div>
+            <span style={{ fontSize: '9px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase' }}>Tax</span>
+            <div style={{ fontSize: '12px', fontWeight: '800', color: '#0f172a' }}>₹0</div>
+          </div>
+          <div>
+            <span style={{ fontSize: '9px', color: '#16a34a', fontWeight: '800', textTransform: 'uppercase' }}>Total</span>
+            <div style={{ fontSize: '13px', fontWeight: '900', color: '#16a34a' }}>₹{subTotal}</div>
+          </div>
+        </div>
+
+        {/* Pay Button */}
+        <button
+          type="button"
+          onClick={handleCreateOrder}
+          disabled={cart.length === 0 || isSubmitting}
+          style={{
+            width: '100%',
+            padding: '11px 16px',
+            borderRadius: '9999px',
+            border: 'none',
+            background: cart.length > 0 && !isSubmitting ? '#0f172a' : '#e2e8f0',
+            color: cart.length > 0 && !isSubmitting ? '#ffffff' : '#94a3b8',
+            fontSize: '13px',
+            fontWeight: '900',
+            cursor: cart.length > 0 && !isSubmitting ? 'pointer' : 'not-allowed',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontFamily: 'inherit',
+          }}
+        >
+          <span>⚡ {isSubmitting ? 'Processing...' : 'Pay out now'}</span>
+          <span style={{
+            background: cart.length > 0 && !isSubmitting ? 'rgba(255,255,255,0.15)' : '#cbd5e1',
+            color: cart.length > 0 && !isSubmitting ? '#a3e635' : '#64748b',
+            padding: '2px 8px',
+            borderRadius: '9999px',
+            fontSize: '11px',
+            fontWeight: '900',
+          }}>
+            ₹{subTotal}
+          </span>
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div
+      style={{
+        minHeight: 'calc(100vh - 60px)',
+        background: '#f8fafc',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        paddingBottom: '30px',
+      }}
+    >
+      <style>{`
+        .pos-container {
+          display: flex;
+          gap: 20px;
+          padding: 20px;
+          box-sizing: border-box;
+          align-items: flex-start;
+          font-family: system-ui, -apple-system, sans-serif;
+        }
+        .desktop-cart-panel {
+          flex: 1;
+          width: 360px;
+          max-width: 380px;
+          height: calc(100vh - 100px);
+          position: sticky;
+          top: 80px;
+          display: block;
+        }
+        .mobile-floating-cart-bar {
+          display: none !important;
+        }
+
+        @media (max-width: 960px) {
+          .pos-container {
+            flex-direction: column;
+            padding: 14px;
+            padding-bottom: 90px;
+          }
+          .desktop-cart-panel {
+            display: none !important;
+          }
+          .mobile-floating-cart-bar {
+            display: flex !important;
+          }
+        }
+      `}</style>
+
+      <div className="pos-container">
+        {/* Left Column: Menu Catalog */}
+        <div style={{ flex: 1, width: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+            <div style={{
+              width: '34px',
+              height: '34px',
+              borderRadius: '10px',
+              background: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '16px',
+              border: '1px solid #e2e8f0',
+            }}>
+              💻
+            </div>
+            <div>
+              <h2 style={{ fontSize: '17px', fontWeight: '900', color: '#0f172a', margin: 0 }}>
+                FastPOS Counter Console
+              </h2>
+              <p style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>
+                Tap item to add to bill • Total {filteredItems.length} items
+              </p>
             </div>
           </div>
 
-          {/* Order Channel Selector Pills */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
-              gap: '6px',
-              background: '#f1f5f9',
-              padding: '4px',
-              borderRadius: '9999px',
-              marginBottom: '14px',
-            }}
-          >
-            {ORDER_TYPES.map((channel) => {
-              const isSelected = orderType === channel.id;
+          {/* Category Filter Pills */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            background: '#ffffff',
+            padding: '4px 6px',
+            borderRadius: '9999px',
+            border: '1px solid #e2e8f0',
+            marginBottom: '16px',
+            overflowX: 'auto',
+            whiteSpace: 'nowrap',
+          }}>
+            <button
+              type="button"
+              onClick={() => setActiveCategory('all')}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '9999px',
+                border: 'none',
+                background: activeCategory === 'all' ? '#0f172a' : 'transparent',
+                color: activeCategory === 'all' ? '#ffffff' : '#64748b',
+                cursor: 'pointer',
+                fontWeight: '800',
+                fontSize: '12px',
+                flexShrink: 0,
+                fontFamily: 'inherit',
+              }}
+            >
+              All Items
+            </button>
+            {categories.map((cat) => {
+              const catKey = cat.slug || cat.id || cat.name;
+              const isCatActive = activeCategory === catKey;
               return (
                 <button
-                  key={channel.id}
+                  key={catKey}
                   type="button"
-                  onClick={() => setOrderType(channel.id)}
+                  onClick={() => setActiveCategory(catKey)}
                   style={{
-                    padding: '8px 0',
+                    padding: '6px 14px',
                     borderRadius: '9999px',
                     border: 'none',
-                    background: isSelected ? '#0f172a' : 'transparent',
-                    color: isSelected ? '#ffffff' : '#64748b',
-                    fontSize: '12px',
-                    fontWeight: '800',
+                    background: isCatActive ? '#0f172a' : 'transparent',
+                    color: isCatActive ? '#ffffff' : '#64748b',
                     cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    boxShadow: isSelected ? '0 2px 8px rgba(15,23,42,0.15)' : 'none',
+                    fontWeight: '800',
+                    fontSize: '12px',
+                    textTransform: 'capitalize',
+                    flexShrink: 0,
+                    fontFamily: 'inherit',
                   }}
                 >
-                  {channel.label}
+                  {cat.name}
                 </button>
               );
             })}
           </div>
 
-          {/* Table Input for Dine-in */}
-          {orderType === 'DINE_IN' && (
-            <div style={{ marginBottom: '14px' }}>
-              <input
-                type="text"
-                placeholder="Enter Table Number (e.g. 7)"
-                value={tableNo}
-                onChange={(e) => setTableNo(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  borderRadius: '12px',
-                  background: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  color: '#0f172a',
-                  boxSizing: 'border-box',
-                  fontSize: '13px',
-                  fontWeight: '600',
-                  outline: 'none',
-                }}
-              />
+          {/* Items Grid */}
+          {loading ? (
+            <div style={{ padding: '30px', textAlign: 'center', color: '#64748b' }}>
+              Loading items...
             </div>
-          )}
+          ) : (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+              gap: '12px',
+            }}>
+              {filteredItems.map((item) => {
+                const itemId = item._id || item.id;
+                const stockCount = item.currentStock !== undefined ? item.currentStock : item.stockQuantity;
+                const isDisabled = !item.isAvailable || (stockCount !== undefined && stockCount <= 0);
 
-          {/* Cart Items List */}
-          <div style={{ maxHeight: '220px', overflowY: 'auto', paddingRight: '4px', marginBottom: '14px' }}>
-            {cart.length === 0 ? (
-              <div
-                style={{
-                  textAlign: 'center',
-                  padding: '40px 16px',
-                  background: '#f8fafc',
-                  borderRadius: '18px',
-                  border: '1px dashed #e2e8f0',
-                }}
-              >
-                <div style={{ fontSize: '26px', marginBottom: '6px' }}>🛒</div>
-                <p style={{ margin: 0, fontSize: '13px', color: '#64748b', fontWeight: '600' }}>
-                  Cart is empty. Tap items to add.
-                </p>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {cart.map((item) => {
-                  const cartItemId = item._id || item.id;
-                  return (
-                    <div
-                      key={cartItemId}
-                      style={{
-                        background: '#f8fafc',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '14px',
-                        padding: '10px 12px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                      }}
-                    >
-                      <div>
-                        <h4 style={{ margin: '0 0 2px 0', fontSize: '13px', fontWeight: '800', color: '#0f172a' }}>
-                          {item.name}
-                        </h4>
-                        <span style={{ fontSize: '12px', color: '#16a34a', fontWeight: '800' }}>
-                          ₹{item.price} × {item.quantity}
-                        </span>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <button
-                          type="button"
-                          onClick={() => updateQuantity(cartItemId, -1)}
-                          style={{
-                            width: '26px',
-                            height: '26px',
-                            borderRadius: '8px',
-                            border: '1px solid #e2e8f0',
-                            background: '#ffffff',
-                            color: '#0f172a',
-                            fontWeight: '900',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          -
-                        </button>
-                        <span style={{ fontSize: '13px', fontWeight: '800', minWidth: '16px', textAlign: 'center' }}>
-                          {item.quantity}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => updateQuantity(cartItemId, 1)}
-                          style={{
-                            width: '26px',
-                            height: '26px',
-                            borderRadius: '8px',
-                            border: '1px solid #e2e8f0',
-                            background: '#ffffff',
-                            color: '#0f172a',
-                            fontWeight: '900',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Bottom Segment */}
-        <div>
-          {/* Payment Method Selector */}
-          <div style={{ marginBottom: '14px' }}>
-            <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '8px' }}>
-              Select Payment Method
-            </span>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
-              {PAYMENT_METHODS.map((pm) => {
-                const isSelected = paymentMethod === pm.id;
                 return (
-                  <button
-                    key={pm.id}
-                    type="button"
-                    onClick={() => setPaymentMethod(pm.id)}
+                  <div
+                    key={itemId}
+                    onClick={() => addToCart(item)}
                     style={{
-                      padding: '9px 0',
-                      borderRadius: '12px',
-                      border: isSelected ? '1px solid #0f172a' : '1px solid #e2e8f0',
-                      background: isSelected ? '#0f172a' : '#f8fafc',
-                      color: isSelected ? '#ffffff' : '#64748b',
-                      fontSize: '12px',
-                      fontWeight: '800',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
+                      background: isDisabled ? '#f8fafc' : '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '16px',
+                      padding: '14px',
+                      opacity: isDisabled ? 0.6 : 1,
+                      cursor: isDisabled ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      minHeight: '120px',
+                      boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
                     }}
                   >
-                    {pm.label}
-                  </button>
+                    <div>
+                      <h4 style={{ margin: '0 0 4px 0', fontSize: '13px', fontWeight: '800', color: '#0f172a', lineHeight: '1.2' }}>
+                        {item.name}
+                      </h4>
+                      <div style={{ fontSize: '16px', fontWeight: '900', color: '#16a34a' }}>
+                        ₹{item.price}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', paddingTop: '8px', borderTop: '1px solid #f1f5f9' }}>
+                      <span style={{
+                        fontSize: '9px',
+                        fontWeight: '800',
+                        padding: '2px 6px',
+                        borderRadius: '9999px',
+                        backgroundColor: isDisabled ? '#fee2e2' : '#dcfce7',
+                        color: isDisabled ? '#b91c1c' : '#15803d',
+                      }}>
+                        {!item.isAvailable ? 'DISABLED' : 'IN STOCK'}
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={(e) => toggleAvailability(e, itemId)}
+                        style={{
+                          fontSize: '10px',
+                          padding: '3px 8px',
+                          borderRadius: '9999px',
+                          border: '1px solid #e2e8f0',
+                          fontWeight: '700',
+                          backgroundColor: item.isAvailable ? '#fef2f2' : '#f0fdf4',
+                          color: item.isAvailable ? '#ef4444' : '#16a34a',
+                          cursor: 'pointer',
+                          fontFamily: 'inherit',
+                        }}
+                      >
+                        {item.isAvailable ? 'Disable' : 'Enable'}
+                      </button>
+                    </div>
+                  </div>
                 );
               })}
             </div>
-          </div>
+          )}
+        </div>
 
-          {/* Financial Summary Bento Grid (Light) */}
-          <div
+        {/* Right Column: Desktop Cart Panel */}
+        <div className="desktop-cart-panel">
+          {renderCartConsole()}
+        </div>
+      </div>
+
+      {/* Floating Bottom Cart Bar for Mobile */}
+      <div
+        className="mobile-floating-cart-bar"
+        onClick={() => setMobileCartOpen(true)}
+        style={{
+          position: 'fixed',
+          bottom: '14px',
+          left: '14px',
+          right: '14px',
+          background: '#090d16',
+          color: '#ffffff',
+          borderRadius: '9999px',
+          padding: '12px 20px',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          boxShadow: '0 10px 25px rgba(0,0,0,0.35)',
+          cursor: 'pointer',
+          zIndex: 900,
+          fontFamily: 'inherit',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span
             style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
-              gap: '6px',
-              background: '#f8fafc',
-              padding: '12px 10px',
-              borderRadius: '16px',
-              border: '1px solid #e2e8f0',
-              marginBottom: '14px',
+              background: '#a3e635',
+              color: '#090d16',
+              padding: '2px 8px',
+              borderRadius: '9999px',
+              fontSize: '12px',
+              fontWeight: '900',
             }}
           >
-            <div>
-              <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase' }}>Subtotal</span>
-              <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', marginTop: '2px' }}>
-                ₹{subTotal}
-              </div>
-            </div>
+            {totalCartQty}
+          </span>
+          <span style={{ fontSize: '13px', fontWeight: '800' }}>View Active Cart</span>
+        </div>
+        <span style={{ fontSize: '14px', fontWeight: '900', color: '#a3e635' }}>
+          ₹{subTotal} →
+        </span>
+      </div>
 
-            <div>
-              <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase' }}>Tax (0%)</span>
-              <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', marginTop: '2px' }}>
-                ₹0
-              </div>
-            </div>
-
-            <div>
-              <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: '800', textTransform: 'uppercase' }}>Total Due</span>
-              <div style={{ fontSize: '15px', fontWeight: '900', color: '#16a34a', marginTop: '2px' }}>
-                ₹{subTotal}
-              </div>
-            </div>
-          </div>
-
-          {/* Pay Out Action Button */}
-          <button
-            type="button"
-            onClick={handleCreateOrder}
-            disabled={cart.length === 0 || isSubmitting}
+      {/* Mobile Cart Modal */}
+      {mobileCartOpen && (
+        <div
+          onClick={() => setMobileCartOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 9999,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'flex-end',
+            fontFamily: 'inherit',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
             style={{
-              width: '100%',
-              padding: '14px 18px',
-              borderRadius: '9999px',
-              border: 'none',
-              background: cart.length > 0 && !isSubmitting ? '#0f172a' : '#e2e8f0',
-              color: cart.length > 0 && !isSubmitting ? '#ffffff' : '#94a3b8',
-              fontSize: '14px',
-              fontWeight: '900',
-              cursor: cart.length > 0 && !isSubmitting ? 'pointer' : 'not-allowed',
+              background: '#ffffff',
+              borderTopLeftRadius: '24px',
+              borderTopRightRadius: '24px',
+              padding: '16px',
+              maxHeight: '85vh',
               display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              boxShadow: cart.length > 0 && !isSubmitting ? '0 8px 20px -4px rgba(15, 23, 42, 0.25)' : 'none',
-              transition: 'all 0.2s ease',
+              flexDirection: 'column',
               boxSizing: 'border-box',
             }}
           >
-            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span>⚡</span> {isSubmitting ? 'Processing...' : 'Pay out now'}
-            </span>
-            <span
-              style={{
-                background: cart.length > 0 && !isSubmitting ? 'rgba(255,255,255,0.15)' : '#cbd5e1',
-                color: cart.length > 0 && !isSubmitting ? '#a3e635' : '#64748b',
-                padding: '4px 12px',
-                borderRadius: '9999px',
-                fontSize: '12px',
-                fontWeight: '900',
-              }}
-            >
-              ₹{subTotal}
-            </span>
-          </button>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setMobileCartOpen(false)}
+                style={{
+                  background: '#f1f5f9',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '28px',
+                  height: '28px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ flex: 1, minHeight: 0 }}>
+              {renderCartConsole()}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

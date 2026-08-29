@@ -63,23 +63,31 @@ function NavigationBar() {
           padding: 0 !important;
           box-sizing: border-box;
         }
+        @media (max-width: 960px) {
+          .desktop-center-notch {
+            display: none !important;
+          }
+          .user-name-label {
+            display: none !important;
+          }
+        }
       `}</style>
 
-      {/* Top Main Navigation Bar */}
+      {/* Main Top Nav */}
       <nav style={{
         background: '#ffffff',
-        padding: '0 24px',
+        padding: '0 16px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         borderBottom: '1px solid #f1f5f9',
-        height: '64px',
+        height: '60px',
         position: 'relative',
-        fontFamily: 'system-ui, -apple-system, sans-serif'
+        fontFamily: 'Montserrat, sans-serif'
       }}>
         
-        {/* Left: Menu Icon + Brand Name */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', zIndex: 10 }}>
+        {/* Left: Menu & Brand */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', zIndex: 10 }}>
           <button
             onClick={() => setDrawerOpen(true)}
             title="Open Menu"
@@ -88,40 +96,37 @@ function NavigationBar() {
               border: '1px solid #e2e8f0',
               color: '#0f172a',
               fontSize: '16px',
-              width: '38px',
-              height: '38px',
+              width: '36px',
+              height: '36px',
               borderRadius: '10px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              transition: 'background 0.2s'
             }}
           >
             ☰
           </button>
 
-          <span style={{ color: '#0f172a', fontWeight: '900', fontSize: '17px', letterSpacing: '-0.3px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ color: '#0f172a', fontWeight: '900', fontSize: '16px', letterSpacing: '-0.3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
             <span style={{ color: '#65a30d', fontSize: '18px' }}>⚡</span> RestoManager
           </span>
         </div>
 
-        {/* Center: Flush Inverted Notch (No Gap at Top) */}
-        <div style={{
+        {/* Center: Inverted Notch (Desktop Only) */}
+        <div className="desktop-center-notch" style={{
           position: 'absolute',
           left: '50%',
-          top: '-1px', // Pulled up to eliminate subpixel gap
+          top: '-1px',
           transform: 'translateX(-50%)',
           display: 'flex',
           alignItems: 'flex-start',
           zIndex: 20
         }}>
-          {/* Left Inverted Corner SVG */}
           <svg width="22" height="22" viewBox="0 0 22 22" style={{ display: 'block', flexShrink: 0 }}>
             <path d="M0,0 C12.15,0 22,9.85 22,22 L22,0 Z" fill="#090d16" />
           </svg>
 
-          {/* Center Black Tab Pill */}
           <div style={{
             background: '#090d16',
             padding: '8px 14px 10px 14px',
@@ -133,50 +138,41 @@ function NavigationBar() {
             boxShadow: '0 8px 18px -4px rgba(0, 0, 0, 0.28)'
           }}>
             {(!isSecurityOn || !currentUser || currentUser.role === 'MANAGER' || currentUser.role === 'CASHIER') && (
-              <Link to="/pos" style={getPillStyle('/pos')}>
-                POS Billing
-              </Link>
+              <Link to="/pos" style={getPillStyle('/pos')}>POS Billing</Link>
             )}
 
             {(!isSecurityOn || !currentUser || currentUser.role === 'MANAGER' || currentUser.role === 'KITCHEN') && (
-              <Link to="/kds" style={getPillStyle('/kds')}>
-                Kitchen
-              </Link>
+              <Link to="/kds" style={getPillStyle('/kds')}>Kitchen</Link>
             )}
 
             {(!isSecurityOn || !currentUser || currentUser.role === 'MANAGER' || currentUser.role === 'CASHIER') && (
               <>
-                <Link to="/history" style={getPillStyle('/history')}>
-                  Orders
-                </Link>
-                <Link to="/tables" style={getPillStyle('/tables')}>
-                  Live Tables
-                </Link>
+                <Link to="/history" style={getPillStyle('/history')}>Orders</Link>
+                <Link to="/tables" style={getPillStyle('/tables')}>Live Tables</Link>
               </>
             )}
           </div>
 
-          {/* Right Inverted Corner SVG */}
           <svg width="22" height="22" viewBox="0 0 22 22" style={{ display: 'block', flexShrink: 0 }}>
             <path d="M22,0 C9.85,0 0,9.85 0,22 L0,0 Z" fill="#090d16" />
           </svg>
         </div>
 
-        {/* Right: Identity & Lock */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', zIndex: 10 }}>
+        {/* Right: User & Lock Status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', zIndex: 10 }}>
           {isSecurityOn ? (
             currentUser ? (
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
+                gap: '6px',
                 background: '#f8fafc',
-                padding: '4px 6px 4px 14px',
+                padding: '3px 6px 3px 10px',
                 borderRadius: '9999px',
                 border: '1px solid #e2e8f0'
               }}>
-                <span style={{
-                  fontSize: '12px',
+                <span className="user-name-label" style={{
+                  fontSize: '11px',
                   fontWeight: '700',
                   color: currentUser.role === 'MANAGER' ? '#7e22ce' : '#0284c7'
                 }}>
@@ -189,9 +185,9 @@ function NavigationBar() {
                     background: '#090d16',
                     border: 'none',
                     color: '#f8fafc',
-                    padding: '6px 14px',
+                    padding: '5px 10px',
                     borderRadius: '9999px',
-                    fontSize: '12px',
+                    fontSize: '11px',
                     fontWeight: '700',
                     cursor: 'pointer',
                     display: 'flex',
@@ -199,7 +195,7 @@ function NavigationBar() {
                     gap: '4px'
                   }}
                 >
-                  🔒 Lock Terminal
+                  🔒 Lock
                 </button>
               </div>
             ) : (
@@ -209,21 +205,21 @@ function NavigationBar() {
                   background: '#090d16',
                   border: 'none',
                   color: '#ffffff',
-                  padding: '8px 18px',
+                  padding: '6px 14px',
                   borderRadius: '9999px',
-                  fontSize: '13px',
+                  fontSize: '12px',
                   fontWeight: '800',
                   cursor: 'pointer'
                 }}
               >
-                🔑 Staff Login
+                🔑 Login
               </button>
             )
           ) : null}
         </div>
       </nav>
 
-      {/* Slide Drawer */}
+      {/* Slide Drawer (All navigation accessible on Mobile) */}
       {drawerOpen && (
         <div
           onClick={() => setDrawerOpen(false)}
@@ -239,19 +235,20 @@ function NavigationBar() {
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              width: '290px',
+              width: '82%',
+              maxWidth: '300px',
               height: '100%',
               background: '#090d16',
               borderRight: '1px solid #1e293b',
-              padding: '24px 18px',
+              padding: '20px 16px',
               boxSizing: 'border-box',
               display: 'flex',
               flexDirection: 'column',
               boxShadow: '12px 0 35px rgba(0,0,0,0.6)'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #1e293b' }}>
-              <span style={{ color: '#fff', fontWeight: '900', fontSize: '17px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingBottom: '14px', borderBottom: '1px solid #1e293b' }}>
+              <span style={{ color: '#fff', fontWeight: '900', fontSize: '16px' }}>
                 <span style={{ color: '#a3e635' }}>⚡</span> RestoManager
               </span>
               <button
@@ -260,10 +257,10 @@ function NavigationBar() {
                   background: '#1e293b',
                   border: 'none',
                   color: '#94a3b8',
-                  width: '30px',
-                  height: '30px',
+                  width: '28px',
+                  height: '28px',
                   borderRadius: '50%',
-                  fontSize: '14px',
+                  fontSize: '13px',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -274,7 +271,19 @@ function NavigationBar() {
               </button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, overflowY: 'auto' }}>
+              <Link to="/pos" onClick={() => setDrawerOpen(false)} style={getDrawerLinkStyle('/pos')}>
+                <span>🖥️</span> POS Billing
+              </Link>
+              <Link to="/kds" onClick={() => setDrawerOpen(false)} style={getDrawerLinkStyle('/kds')}>
+                <span>🍳</span> Kitchen KDS
+              </Link>
+              <Link to="/history" onClick={() => setDrawerOpen(false)} style={getDrawerLinkStyle('/history')}>
+                <span>📑</span> Order History
+              </Link>
+              <Link to="/tables" onClick={() => setDrawerOpen(false)} style={getDrawerLinkStyle('/tables')}>
+                <span>🍽️</span> Live Tables
+              </Link>
               <Link to="/" onClick={() => setDrawerOpen(false)} style={getDrawerLinkStyle('/')}>
                 <span>📱</span> QR Customer Menu
               </Link>
@@ -297,8 +306,8 @@ function NavigationBar() {
               )}
             </div>
 
-            <div style={{ borderTop: '1px solid #1e293b', paddingTop: '14px', fontSize: '11px', color: '#64748b' }}>
-              RestoManager SaaS • Multi-Outlet POS
+            <div style={{ borderTop: '1px solid #1e293b', paddingTop: '12px', fontSize: '11px', color: '#64748b' }}>
+              RestoManager SaaS POS
             </div>
           </div>
         </div>

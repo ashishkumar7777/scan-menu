@@ -1,0 +1,16 @@
+name: Keep Render Backend Awake
+
+on:
+  schedule:
+    # Run every 12 minutes
+    - cron: '*/12 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping-server:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Backend API
+        run: |
+          curl -s https://resto-backend-rete.onrender.com/api/orders > /dev/null
+          echo "Server pinged successfully at $(date)"

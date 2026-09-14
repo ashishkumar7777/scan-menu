@@ -21,7 +21,7 @@ function NavigationBar() {
   const isSecurityOn = storeSettings?.pinSecurityEnabled ?? true;
 
   const getPillStyle = (path) => {
-    const isActive = location.pathname === path;
+    const isActive = location.pathname === path || (path === '/pos' && location.pathname === '/');
     return {
       textDecoration: 'none',
       fontSize: '13px',
@@ -41,19 +41,22 @@ function NavigationBar() {
     };
   };
 
-  const getDrawerLinkStyle = (path) => ({
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    padding: '12px 16px',
-    borderRadius: '12px',
-    textDecoration: 'none',
-    color: location.pathname === path ? '#090d16' : '#e2e8f0',
-    background: location.pathname === path ? '#a3e635' : 'transparent',
-    fontWeight: location.pathname === path ? '800' : '600',
-    fontSize: '14px',
-    transition: 'all 0.15s ease',
-  });
+  const getDrawerLinkStyle = (path) => {
+    const isActive = location.pathname === path || (path === '/pos' && location.pathname === '/');
+    return {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '12px',
+      padding: '12px 16px',
+      borderRadius: '12px',
+      textDecoration: 'none',
+      color: isActive ? '#090d16' : '#e2e8f0',
+      background: isActive ? '#a3e635' : 'transparent',
+      fontWeight: isActive ? '800' : '600',
+      fontSize: '14px',
+      transition: 'all 0.15s ease',
+    };
+  };
 
   return (
     <>
@@ -138,7 +141,7 @@ function NavigationBar() {
             boxShadow: '0 8px 18px -4px rgba(0, 0, 0, 0.28)'
           }}>
             {(!isSecurityOn || !currentUser || currentUser.role === 'MANAGER' || currentUser.role === 'CASHIER') && (
-              <Link to="/pos" style={getPillStyle('/pos')}>POS Billing</Link>
+              <Link to="/" style={getPillStyle('/pos')}>POS Billing</Link>
             )}
 
             {(!isSecurityOn || !currentUser || currentUser.role === 'MANAGER' || currentUser.role === 'KITCHEN') && (
@@ -272,7 +275,7 @@ function NavigationBar() {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, overflowY: 'auto' }}>
-              <Link to="/pos" onClick={() => setDrawerOpen(false)} style={getDrawerLinkStyle('/pos')}>
+              <Link to="/" onClick={() => setDrawerOpen(false)} style={getDrawerLinkStyle('/pos')}>
                 <span>🖥️</span> POS Billing
               </Link>
               <Link to="/kds" onClick={() => setDrawerOpen(false)} style={getDrawerLinkStyle('/kds')}>
@@ -284,7 +287,7 @@ function NavigationBar() {
               <Link to="/tables" onClick={() => setDrawerOpen(false)} style={getDrawerLinkStyle('/tables')}>
                 <span>🍽️</span> Live Tables
               </Link>
-              <Link to="/" onClick={() => setDrawerOpen(false)} style={getDrawerLinkStyle('/')}>
+              <Link to="/menu" onClick={() => setDrawerOpen(false)} style={getDrawerLinkStyle('/menu')}>
                 <span>📱</span> QR Customer Menu
               </Link>
 
@@ -324,11 +327,15 @@ export default function App() {
           <NavigationBar />
 
           <Routes>
-            <Route path="/" element={<ScanMenu />} />
+            {/* Pehla Default Page ab Seedha POS Billing khulega */}
+            <Route path="/" element={<ProtectedRoute allowedRoles={['MANAGER', 'CASHIER']}><PosBilling /></ProtectedRoute>} />
+            <Route path="/pos" element={<ProtectedRoute allowedRoles={['MANAGER', 'CASHIER']}><PosBilling /></ProtectedRoute>} />
+
+            {/* Customer QR Menu ke liye dedicated routes */}
             <Route path="/menu" element={<ScanMenu />} />
             <Route path="/scan/:cafeId" element={<ScanMenu />} />
 
-            <Route path="/pos" element={<ProtectedRoute allowedRoles={['MANAGER', 'CASHIER']}><PosBilling /></ProtectedRoute>} />
+            {/* Baaki Staff Operations */}
             <Route path="/tables" element={<ProtectedRoute allowedRoles={['MANAGER', 'CASHIER']}><TableManagement /></ProtectedRoute>} />
             <Route path="/history" element={<ProtectedRoute allowedRoles={['MANAGER', 'CASHIER']}><OrderHistory /></ProtectedRoute>} />
 

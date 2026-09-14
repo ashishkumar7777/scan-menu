@@ -1,0 +1,634 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
+import { io } from 'socket.io-client';
+
+const API_BASE = process.env.REACT_APP_API_URL || 'https://resto-backend-rete.onrender.com';
+
+const CATEGORY_ICONS = {
+  breakfast: '🥞',
+  mains: '🍲',
+  drinks: '🥤',
+  desserts: '🍰',
+  special: '⭐',
+  chinese: '🥡',
+  tandoor: '🍢',
+  beverages: '🧃',
+  snacks: '🍟',
+};
+
+const loadRazorpayScript = () => {
+  return new Promise((resolve) => {
+    if (window.Razorpay) {
+      resolve(true);
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = () => resolve(true);
+    script.onerror = () => {
+      console.error('Razorpay SDK failed to load from CDN');
+      resolve(false);
+    };
+    document.body.appendChild(script);
+  });
+};
+
+export default function ScanMenu() {
+  const pathParts = window.location.pathname.split('/');
+  const cafeId = pathParts[2] || 'cafebar-dhaba';
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const tableNumber = searchParams.get('table') || '7';
+
+  const [menuItems, setMenuItems] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [cart, setCart] = useState([]);
+  const [activeCategory, setActiveCategory] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successOrderId, setSuccessOrderId] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+
+  const fetchMenu = useCallback(async () => {
+    try {
+      const [itemsRes, catRes] = await Promise.all([
+        axios.get(`${API_BASE}/api/items`).catch(() => axios.get(`${API_BASE}/api/items/all`)),
+        axios.get(`${API_BASE}/api/categories/all`).catch(() => ({ data: [] })),
+      ]);
+
+      const items = itemsRes.data || [];
+      setMenuItems(items);
+
+      let fetchedCats = catRes.data || [];
+
+      if (!fetchedCats || fetchedCats.length === 0) {
+        const uniqueSlugs = Array.from(
+          new Set(items.map((i) => i.category?.toString().toLowerCase().trim()).filter(Boolean))
+        );
+        fetchedCats = uniqueSlugs.map((slug) => ({
+          name: slug.charAt(0).toUpperCase() + slug.slice(1),
+          slug,
+        }));
+      }
+
+      setCategories(fetchedCats);
+
+      setActiveCategory((prev) => {
+        if (prev && fetchedCats.some((c) => (c.slug || c.id) === prev)) return prev;
+        return fetchedCats[0]?.slug || fetchedCats[0]?.id || 'mains';
+      });
+    } catch (err) {
+      console.error('Error fetching MongoDB menu/categories:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchMenu();
+
+    const socket = io(API_BASE);
+    socket.on('new_order_received', fetchMenu);
+    socket.on('item_status_changed', fetchMenu);
+    socket.on('category_updated', fetchMenu);
+
+    return () => {
+      socket.off('new_order_received', fetchMenu);
+      socket.off('item_status_changed', fetchMenu);
+      socket.off('category_updated', fetchMenu);
+      socket.disconnect();
+    };
+  }, [fetchMenu]);
+
+  const addToCart = (product) => {
+    const productId = product._id || product.id;
+    const stockLimit = product.currentStock !== undefined ? product.currentStock : product.stockQuantity;
+
+    if (!product.isAvailable || (product.trackStock && stockLimit <= 0)) return;
+
+    setCart((prevCart) => {
+      const existingItem = prevCart.find((item) => item._id === productId || item.id === productId);
+      if (existingItem) {
+        if (product.trackStock && existingItem.quantity >= stockLimit) {
+          alert(`Only ${stockLimit} available in stock!`);
+          return prevCart;
+        }
+        return prevCart.map((item) =>
+          item._id === productId || item.id === productId
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        );
+      }
+      return [...prevCart, { ...product, id: productId, quantity: 1 }];
+    });
+  };
+
+  const removeFromCart = (productId) => {
+    setCart((prevCart) => {
+      const existingItem = prevCart.find((item) => item._id === productId || item.id === productId);
+      if (!existingItem) return prevCart;
+      if (existingItem.quantity === 1) {
+        return prevCart.filter((item) => item._id !== productId && item.id !== productId);
+      }
+      return prevCart.map((item) =>
+        item._id === productId || item.id === productId
+          ? { ...item, quantity: item.quantity - 1 }
+          : item
+      );
+    });
+  };
+
+  const totalItemsCount = cart.reduce((total, item) => total + item.quantity, 0);
+  const grandTotalAmount = cart.reduce((total, item) => total + Number(item.price) * item.quantity, 0);
+
+  const openCheckoutModal = () => {
+    if (cart.length === 0) return alert('Your cart is empty!');
+    setShowCheckoutModal(true);
+  };
+
+  const closeCheckoutModal = () => {
+    if (isSubmitting) return;
+    setShowCheckoutModal(false);
+  };
+
+  const closeSuccessModal = () => {
+    setShowSuccessModal(false);
+    setSuccessOrderId('');
+  };
+
+  const saveConfirmedOrder = async (orderId, cartItems, trimmedName, trimmedPhone, paymentResponse = {}) => {
+    const directPayload = {
+      orderId,
+      source: 'QR_MENU',
+      orderType: 'DINE_IN',
+      tableNo: String(tableNumber),
+      customerName: trimmedName,
+      whatsappNumber: trimmedPhone,
+      items: cartItems,
+      subTotal: Number(grandTotalAmount),
+      grandTotal: Number(grandTotalAmount),
+      totalAmount: Number(grandTotalAmount),
+      paymentMethod: 'UPI',
+      paymentStatus: 'PAID',
+      status: 'NEW',
+      paymentDetails: paymentResponse,
+    };
+
+    const res = await axios.post(`${API_BASE}/api/orders/create`, directPayload)
+      .catch(() => axios.post(`${API_BASE}/api/orders`, directPayload));
+
+    if (res.data?.success || res.status === 200 || res.status === 201) {
+      const confirmedId = res.data?.order?.orderId || res.data?.orderId || orderId;
+      setCart([]);
+      setCustomerName('');
+      setCustomerPhone('');
+      setShowCheckoutModal(false);
+      setSuccessOrderId(confirmedId);
+      setShowSuccessModal(true);
+      fetchMenu();
+    }
+  };
+
+  const handleProceedToPay = async () => {
+    const trimmedName = customerName.trim();
+    const trimmedPhone = customerPhone.replace(/\D/g, '');
+
+    if (!trimmedName) return alert('Please enter your name.');
+    if (trimmedPhone.length < 10) return alert('Please enter a valid WhatsApp mobile number.');
+
+    setIsSubmitting(true);
+    const orderId = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
+
+    const cartItems = cart.map((i) => ({
+      itemId: i._id || i.id,
+      name: i.name,
+      price: Number(i.price),
+      quantity: Number(i.quantity),
+    }));
+
+    try {
+      await loadRazorpayScript();
+
+      const razorpayResponse = await axios.post(`${API_BASE}/api/orders/create-razorpay-order`, {
+        amount: Number(grandTotalAmount),
+        orderId,
+      });
+
+      const rzpData = razorpayResponse.data?.data || razorpayResponse.data?.order;
+      const keyId = razorpayResponse.data?.key_id || rzpData?.key_id || 'rzp_test_51bHkJ4WJ3g6hZ';
+
+      const options = {
+        key: keyId,
+        amount: rzpData?.amount || Math.round(Number(grandTotalAmount) * 100),
+        currency: 'INR',
+        name: cafeId.replace('-', ' '),
+        description: `Table ${tableNumber} • Order ${orderId}`,
+        order_id: rzpData?.id && !String(rzpData.id).startsWith('order_') ? rzpData.id : undefined,
+        prefill: {
+          name: trimmedName,
+          contact: trimmedPhone,
+        },
+        theme: { color: '#2b7a43' },
+        handler: async (response) => {
+          try {
+            await saveConfirmedOrder(orderId, cartItems, trimmedName, trimmedPhone, response);
+          } catch (saveErr) {
+            console.error('Order save error after payment:', saveErr);
+            alert('Payment succeeded. Please show receipt at the counter.');
+          } finally {
+            setIsSubmitting(false);
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            setIsSubmitting(false);
+          },
+        },
+      };
+
+      if (window.Razorpay) {
+        const rzpCheckout = new window.Razorpay(options);
+        rzpCheckout.on('payment.failed', (errResponse) => {
+          setIsSubmitting(false);
+          alert(`Payment failed: ${errResponse.error?.description || 'Transaction cancelled.'}`);
+        });
+        rzpCheckout.open();
+      } else {
+        throw new Error('Razorpay SDK not loaded');
+      }
+    } catch (err) {
+      console.error('Payment checkout error:', err);
+      alert(err.response?.data?.message || err.message || 'Unable to open payment modal');
+      setIsSubmitting(false);
+    }
+  };
+
+  const filteredMenu = menuItems.filter((item) => {
+    if (!activeCategory || activeCategory === 'all') return true;
+    return item.category?.toString().toLowerCase().trim() === activeCategory.toLowerCase().trim();
+  });
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: '#f5f5f7', display: 'flex', justifyContent: 'center', padding: '0', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
+      <div style={{ width: '100%', maxWidth: '420px', backgroundColor: '#f9f9fb', minHeight: '100vh', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+        
+        {/* Header */}
+        <header style={{ backgroundColor: '#1c1c1e', padding: '32px 20px 24px 20px', textTransform: 'uppercase', textAlign: 'center', color: '#ffffff' }}>
+          <h1 style={{ fontSize: '36px', fontWeight: '900', margin: '0', letterSpacing: '0.5px' }}>
+            {cafeId.replace('-', ' ')}
+          </h1>
+          <hr style={{ width: '80%', border: '0', height: '1px', backgroundColor: '#ffffff', margin: '12px auto 8px auto', opacity: '0.4' }} />
+          <p style={{ fontSize: '22px', letterSpacing: '8px', margin: '0', fontWeight: '400', paddingLeft: '8px', color: '#eaeaea' }}>MENU</p>
+        </header>
+
+        {/* Table Badge */}
+        <div style={{ textAlign: 'center', marginTop: '16px', marginBottom: '8px' }}>
+          <div style={{ display: 'inline-block', backgroundColor: '#ffffff', color: '#1c1c1e', fontSize: '13px', fontWeight: '700', padding: '6px 22px', borderRadius: '20px', border: '1px solid #e5e5ea', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+            TABLE NO. {tableNumber}
+          </div>
+        </div>
+
+        {/* Categories Track */}
+        <div style={{ display: 'flex', gap: '16px', overflowX: 'auto', padding: '12px 20px', scrollbarWidth: 'none' }}>
+          {categories.map((cat) => {
+            const catSlug = cat.slug || cat.id || cat.name?.toLowerCase().trim();
+            const icon = CATEGORY_ICONS[catSlug] || '🍽️';
+            const isSelected = activeCategory?.toLowerCase().trim() === catSlug;
+
+            return (
+              <div 
+                key={catSlug} 
+                onClick={() => setActiveCategory(catSlug)}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', flexShrink: 0 }}
+              >
+                <div style={{ 
+                  width: '64px', 
+                  height: '64px', 
+                  borderRadius: '50%', 
+                  backgroundColor: '#ffffff', 
+                  border: isSelected ? '2.5px solid #2b7a43' : '1px solid #e5e5ea', 
+                  boxShadow: '0 4px 8px rgba(0,0,0,0.04)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  fontSize: '26px' 
+                }}>
+                  {icon}
+                </div>
+                <span style={{ fontSize: '12px', marginTop: '8px', color: isSelected ? '#2b7a43' : '#636366', fontWeight: isSelected ? '700' : '600' }}>
+                  {cat.name}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Items List */}
+        <main style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '120px' }}>
+          {loading ? (
+            <div style={{ textAlign: 'center', color: '#8e8e93', marginTop: '30px' }}>
+              Fetching Live Menu...
+            </div>
+          ) : filteredMenu.length > 0 ? (
+            filteredMenu.map((item) => {
+              const itemId = item._id || item.id;
+              const cartItem = cart.find((c) => c._id === itemId || c.id === itemId);
+              const stockLimit = item.currentStock !== undefined ? item.currentStock : item.stockQuantity;
+              const isSoldOut = !item.isAvailable || (item.trackStock && stockLimit <= 0);
+
+              return (
+                <div key={itemId} style={{ backgroundColor: '#ffffff', borderRadius: '18px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)', border: '1px solid #efeff4', height: '88px', opacity: isSoldOut ? 0.7 : 1 }}>
+                  
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexGrow: 1, overflow: 'hidden', height: '100%' }}>
+                    {item.img ? (
+                      <img 
+                        src={item.img} 
+                        alt={item.name} 
+                        style={{ width: '88px', height: '100%', objectFit: 'cover' }} 
+                      />
+                    ) : (
+                      <div style={{ width: '88px', height: '100%', backgroundColor: '#f2f2f7', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#8e8e93', padding: '4px', textAlign: 'center' }}>
+                        <span style={{ fontSize: '18px' }}>🍽️</span>
+                        <span style={{ fontSize: '10px', fontWeight: '600', marginTop: '2px', lineHeight: '1.1' }}>Fresh Dish</span>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1c1c1e', margin: '0' }}>{item.name}</h3>
+                      <p style={{ color: '#1c1c1e', fontSize: '15px', fontWeight: '700', margin: '0' }}>
+                        ₹ {item.price}
+                      </p>
+
+                      {item.trackStock && (
+                        <span style={{
+                          fontSize: '10px',
+                          fontWeight: '700',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          width: 'fit-content',
+                          backgroundColor: isSoldOut ? '#fee2e2' : stockLimit <= 5 ? '#ffedd5' : '#dcfce7',
+                          color: isSoldOut ? '#b91c1c' : stockLimit <= 5 ? '#c2410c' : '#15803d'
+                        }}>
+                          {isSoldOut ? 'SOLD OUT' : stockLimit <= 5 ? `ONLY ${stockLimit} LEFT!` : `STOCK: ${stockLimit}`}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    {isSoldOut ? (
+                      <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: 'bold', padding: '6px 10px', backgroundColor: '#fee2e2', borderRadius: '12px' }}>
+                        Sold Out
+                      </span>
+                    ) : cartItem ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', backgroundColor: '#2b7a43', color: '#ffffff', borderRadius: '20px', padding: '6px 14px', boxShadow: '0 4px 8px rgba(43,122,67,0.25)' }}>
+                        <button onClick={() => removeFromCart(itemId)} style={{ background: 'none', border: 'none', color: '#ffffff', fontSize: '18px', fontWeight: 'bold', cursor: 'pointer' }}>-</button>
+                        <span style={{ fontWeight: '700', fontSize: '15px', minWidth: '12px', textAlign: 'center' }}>{cartItem.quantity}</span>
+                        <button 
+                          onClick={() => addToCart(item)} 
+                          style={{ background: 'none', border: 'none', color: '#ffffff', fontSize: '18px', fontWeight: 'bold', cursor: item.trackStock && cartItem.quantity >= stockLimit ? 'not-allowed' : 'pointer', opacity: item.trackStock && cartItem.quantity >= stockLimit ? 0.4 : 1 }}
+                        >+</button>
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={() => addToCart(item)} 
+                        style={{ backgroundColor: '#2b7a43', color: '#ffffff', border: 'none', width: '36px', height: '36px', borderRadius: '50%', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 8px rgba(43,122,67,0.2)' }}
+                      >
+                        +
+                      </button>
+                    )}
+                  </div>
+
+                </div>
+              );
+            })
+          ) : (
+            <div style={{ textAlign: 'center', color: '#8e8e93', marginTop: '20px', fontSize: '14px', fontWeight: '500' }}>
+              No items available in this category.
+            </div>
+          )}
+        </main>
+
+        {/* Drawer */}
+        {totalItemsCount > 0 && (
+          <div style={{ 
+            position: 'fixed', 
+            bottom: '18px', 
+            left: '50%', 
+            transform: 'translateX(-50%)', 
+            width: '100%', 
+            maxWidth: '420px', 
+            padding: '0 16px', 
+            zIndex: 99, 
+            boxSizing: 'border-box' 
+          }}>
+            <div style={{ 
+              width: '100%', 
+              backgroundColor: '#2b7a43', 
+              color: '#ffffff', 
+              padding: '12px 18px', 
+              borderRadius: '35px', 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              boxShadow: '0 10px 25px rgba(43,122,67,0.35)', 
+              boxSizing: 'border-box' 
+            }}>
+              <div style={{ textAlign: 'left' }}>
+                <span style={{ fontSize: '10px', display: 'block', opacity: 0.8, textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px' }}>{totalItemsCount} ITEMS ADDED</span>
+                <span style={{ fontSize: '16px', fontWeight: '700' }}>View Cart • ₹{grandTotalAmount}</span>
+              </div>
+              <button 
+                onClick={openCheckoutModal}
+                disabled={isSubmitting}
+                style={{ 
+                  backgroundColor: '#1e542e', 
+                  color: '#ffffff', 
+                  border: 'none', 
+                  padding: '8px 18px', 
+                  borderRadius: '25px', 
+                  fontWeight: '700', 
+                  fontSize: '13px', 
+                  cursor: isSubmitting ? 'wait' : 'pointer', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '4px', 
+                  boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.1)', 
+                  flexShrink: 0 
+                }}
+              >
+                {isSubmitting ? 'Processing...' : 'Place Order ➔'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Checkout Modal */}
+        {showCheckoutModal && (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0,0,0,0.55)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 200,
+              padding: '16px',
+            }}
+            onClick={closeCheckoutModal}
+          >
+            <div
+              style={{
+                width: '100%',
+                maxWidth: '380px',
+                backgroundColor: '#ffffff',
+                borderRadius: '20px',
+                padding: '24px',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{ margin: '0 0 8px 0', fontSize: '20px', color: '#1c1c1e' }}>Proceed to Pay</h3>
+              <p style={{ margin: '0 0 20px 0', fontSize: '14px', color: '#636366' }}>
+                Enter your details to complete payment of ₹{grandTotalAmount}.
+              </p>
+
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#1c1c1e', marginBottom: '6px' }}>
+                Customer Name
+              </label>
+              <input
+                type="text"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                placeholder="Your name"
+                disabled={isSubmitting}
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  borderRadius: '12px',
+                  border: '1px solid #e5e5ea',
+                  marginBottom: '16px',
+                  fontSize: '15px',
+                  boxSizing: 'border-box',
+                }}
+              />
+
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#1c1c1e', marginBottom: '6px' }}>
+                WhatsApp Mobile Number
+              </label>
+              <input
+                type="tel"
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e.target.value)}
+                placeholder="10-digit mobile number"
+                disabled={isSubmitting}
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  borderRadius: '12px',
+                  border: '1px solid #e5e5ea',
+                  marginBottom: '20px',
+                  fontSize: '15px',
+                  boxSizing: 'border-box',
+                }}
+              />
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={closeCheckoutModal}
+                  disabled={isSubmitting}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    borderRadius: '12px',
+                    border: '1px solid #e5e5ea',
+                    backgroundColor: '#ffffff',
+                    color: '#1c1c1e',
+                    fontWeight: '600',
+                    cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleProceedToPay}
+                  disabled={isSubmitting}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    borderRadius: '12px',
+                    border: 'none',
+                    backgroundColor: '#2b7a43',
+                    color: '#ffffff',
+                    fontWeight: '700',
+                    cursor: isSubmitting ? 'wait' : 'pointer',
+                  }}
+                >
+                  {isSubmitting ? 'Please wait...' : 'Proceed to Pay'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Success Modal */}
+        {showSuccessModal && (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0,0,0,0.55)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 210,
+              padding: '16px',
+            }}
+          >
+            <div
+              style={{
+                width: '100%',
+                maxWidth: '380px',
+                backgroundColor: '#ffffff',
+                borderRadius: '20px',
+                padding: '28px 24px',
+                textAlign: 'center',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
+              }}
+            >
+              <div style={{ fontSize: '48px', marginBottom: '12px' }}>✓</div>
+              <h3 style={{ margin: '0 0 24px 0', fontSize: '22px', color: '#1c1c1e', lineHeight: 1.4 }}>
+                Order Placed Successfully! Token #{successOrderId}
+              </h3>
+              <button
+                type="button"
+                onClick={closeSuccessModal}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  borderRadius: '12px',
+                  border: 'none',
+                  backgroundColor: '#2b7a43',
+                  color: '#ffffff',
+                  fontWeight: '700',
+                  fontSize: '15px',
+                  cursor: 'pointer',
+                }}
+              >
+                Continue Browsing
+              </button>
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
